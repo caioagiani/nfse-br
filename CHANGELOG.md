@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/[secure]/nfse-br/compare/v2.0.0...v2.0.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **docs:** drop maintainer release notes from the README ([#25](https://github.com/[secure]/nfse-br/issues/25)) ([caeae87](https://github.com/[secure]/nfse-br/commit/caeae875faa6347330f29e98fb275238175cb245))
+
 # [2.0.0](https://github.com/[secure]/nfse-br/compare/v1.9.0...v2.0.0) (2026-11-13)
 
 
