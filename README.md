@@ -34,7 +34,7 @@ the only way to reach the customer and supplier directory and the municipal acti
 
 | Taxpayer | Issue with | Notes |
 | --- | --- | --- |
-| ME/EPP in the Simples Nacional | **National** (`NFSE_EMISSOR=nacional`) | GissOnline stopped issuing for them on 2026-11-01. Confirmed in production (Suzano, 2026-11-13) |
+| ME/EPP in the Simples Nacional | **National** (automatic; or `NFSE_EMISSOR=nacional`) | GissOnline stopped issuing for them on 2026-11-01. Confirmed in production (Suzano, 2026-11-13) |
 | Not in the Simples | Whatever the city enables | National only where the city's agreement allows it (`nfse national-status`) |
 | MEI | National web issuer | Not exercised by this client; RN 239 exempts MEI from the city agreement too |
 
@@ -83,7 +83,7 @@ their contents never enter the repository.
 ## Quick start
 
 ```bash
-# National issuer (Simples Nacional) — set once in .env: NFSE_EMISSOR=nacional
+# National issuer — chosen automatically for a Simples Nacional optant (or NFSE_EMISSOR=nacional)
 nfse national-status                      # the city's agreement (see docs/national.md)
 nfse issue --customer acme --amount 1500 --description "Consulting" --dps 7
 nfse issue --customer acme --amount 1500 --description "Consulting" --dps 7 --confirm

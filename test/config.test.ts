@@ -24,13 +24,15 @@ describe("loadConfig — emissor", () => {
     }
   });
 
-  it("usa o GissOnline por padrão", () => {
+  it("usa o GissOnline por padrão, sem marcá-lo como escolhido", () => {
     assert.equal(loadConfig(base).issuer, "giss");
+    assert.equal(loadConfig(base).issuerExplicit, false);
   });
 
   it("lê NFSE_EMISSOR do ambiente", () => {
     process.env["NFSE_EMISSOR"] = "nacional";
     assert.equal(loadConfig(base).issuer, "nacional");
+    assert.equal(loadConfig(base).issuerExplicit, true);
   });
 
   it("o override vence o ambiente", () => {

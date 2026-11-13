@@ -96,15 +96,22 @@ describe("CLI — fluxo offline com certificado de teste", () => {
   });
 
   it("issue sem --confirm mostra o XML assinado e não envia nada", () => {
-    const preview = run("issue", "--customer", "teste", "--amount", "1500", "--description", "Software", "--rate", "2", "--xml");
+    const preview = run("issue", "--issuer", "giss", "--customer", "teste", "--amount", "1500", "--description", "Software", "--rate", "2", "--xml");
     assert.equal(preview.status, 0, preview.stderr);
     assert.match(preview.stdout, /^<\?xml[\s\S]*<GerarNfseEnvio/);
     assert.match(preview.stdout, /<tipos:Cnpj>52884617000110<\/tipos:Cnpj>/);
     assert.match(preview.stdout, /<SignatureValue>/);
 
-    const summary = run("issue", "--customer", "teste", "--amount", "1500", "--description", "Software", "--rate", "2");
+    const summary = run("issue", "--issuer", "giss", "--customer", "teste", "--amount", "1500", "--description", "Software", "--rate", "2");
     assert.equal(summary.status, 0, summary.stderr);
     assert.match(summary.stdout, /Nothing was sent/);
+  });
+
+  it("optante do Simples emite pelo nacional quando ninguém escolhe o emissor", () => {
+    const result = run("issue", "--customer", "teste", "--amount", "1500", "--description", "Software", "--rate", "2", "--dps", "7");
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /national issuer, chosen automatically/);
+    assert.doesNotMatch(result.stdout, /GerarNfseEnvio/);
   });
 
   it("issue sem alíquota falha antes do envio, com código VALIDATION", () => {

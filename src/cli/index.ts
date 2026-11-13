@@ -149,7 +149,7 @@ TAX PROFILE
 
 Global options:
   --env producao|homologacao   Environment (default: GISS_ENV from .env)
-  --issuer giss|nacional       Who issues (default: NFSE_EMISSOR, or giss)
+  --issuer giss|nacional       Who issues (default: NFSE_EMISSOR; else nacional for a Simples optant, giss otherwise)
   --json | --xml | --debug     Output format / diagnostics
 `;
 
@@ -645,6 +645,33 @@ function warnSimplesDeadline(rps: Rps): void {
   );
 }
 
+/**
+ * Quem emite quando o usuário não disse: `NFSE_EMISSOR` e `--issuer` sempre mandam.
+ * Sem eles, optante do Simples emite pelo nacional desde 01/11/2026 (o GissOnline
+ * deixou de aceitá-lo); quem cancela com `--key` também só pode estar no nacional.
+ * Fora disso fica no GissOnline, porque o nacional depende do convênio da cidade.
+ */
+function resolveIssuer(
+  config: GissConfig,
+  command: string,
+  values: CliValues,
+): { issuer: Issuer; source: "explicit" | "automatic" } {
+  if (config.issuerExplicit) return { issuer: config.issuer, source: "explicit" };
+  if (command === "cancel" && values.key) return { issuer: "nacional", source: "automatic" };
+  if (command === "issue" || command === "replace") {
+    let optant = false;
+    try {
+      optant = new ProfileRepository().load().simplesNacionalOptant === 1;
+    } catch {
+      // sem perfil legível, fica no padrão
+    }
+    if (optant && isoDate(new Date()) >= SIMPLES_NATIONAL_DEADLINE) {
+      return { issuer: "nacional", source: "automatic" };
+    }
+  }
+  return { issuer: config.issuer, source: "automatic" };
+}
+
 const NATIONAL_REASONS: Record<string, string> = {
   "1": "issuing error",
   "2": "service not provided",
@@ -661,7 +688,8 @@ async function runNationalCommand(
   client: NfseClient,
 ): Promise<boolean> {
   const { national, config } = client;
-  const viaNational = config.issuer === "nacional";
+  const { issuer, source } = resolveIssuer(config, command, values);
+  const viaNational = issuer === "nacional";
   const key = () => {
     const value = values.key?.replace(/\D/g, "");
     if (!value || value.length !== 50) throw new Error("Provide the 50-digit access --key");
@@ -676,7 +704,10 @@ async function runNationalCommand(
       console.log(`Environment:             ${config.environment} (${national.hosts.sefin})`);
       console.log(`Shares with national:    ${yes(agreement.sharesWithNational)}`);
       console.log(`Accepts national issuer: ${yes(agreement.usesNationalIssuer)}`);
-      console.log(`Configured issuer:       ${config.issuer}`);
+      const forIssue = resolveIssuer(config, "issue", values);
+      console.log(
+        `Issuer for issue:        ${forIssue.issuer}${forIssue.source === "automatic" ? " (automatic)" : ""}`,
+      );
       if (values.json) console.log(JSON.stringify(agreement.raw, null, 2));
       if (!agreement.usesNationalIssuer) {
         console.log(
@@ -784,7 +815,9 @@ async function runNationalCommand(
         const preview = national.previewDps(rps, issueOptions);
         if (values.xml) return void console.log(preview), true;
         console.log(issueSummary(values, rps));
-        console.log(`DPS:           ${number} series ${issueOptions.series} (national issuer)`);
+        console.log(
+          `DPS:           ${number} series ${issueOptions.series} (national issuer${source === "automatic" ? ", chosen automatically for a Simples Nacional optant" : ""})`,
+        );
         printValidation(preview, "DPS_v1.01.xsd", SCHEMA_DIRECTORIES.national);
         console.log("\nNothing was sent. Repeat with --confirm to actually issue.");
         return true;

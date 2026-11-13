@@ -26,6 +26,8 @@ export interface GissConfig {
   /** Versão do leiaute usada no cabeçalho e nos namespaces */
   version: string;
   issuer: Issuer;
+  /** `true` quando veio de `NFSE_EMISSOR` ou de `--issuer`; `false` é o padrão, que o CLI pode refinar */
+  issuerExplicit: boolean;
 }
 
 function required(key: string): string {
@@ -81,7 +83,8 @@ export function loadConfig(overrides: Partial<GissConfig> = {}): GissConfig {
 
   const city = overrides.city ?? optional("GISS_MUNICIPIO", "suzano");
 
-  const issuer = (overrides.issuer ?? optional("NFSE_EMISSOR", "giss")) as Issuer;
+  const issuerSetting = overrides.issuer ?? read("NFSE_EMISSOR");
+  const issuer = (issuerSetting ?? "giss") as Issuer;
   if (issuer !== "giss" && issuer !== "nacional") {
     throw new ConfigError(`NFSE_EMISSOR inválido: ${issuer} (use giss|nacional)`);
   }
@@ -105,6 +108,7 @@ export function loadConfig(overrides: Partial<GissConfig> = {}): GissConfig {
     cityCode,
     version: overrides.version ?? optional("GISS_VERSAO", "2.04"),
     issuer,
+    issuerExplicit: issuerSetting !== undefined,
   };
 }
 

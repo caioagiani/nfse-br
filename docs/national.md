@@ -5,15 +5,39 @@ NFS-e through the city's own system: Resolução CGSN nº 191/2026 moves them to
 national standard, through the national issuer — web or API. Until 2026-10-31,
 GissOnline keeps working as before.
 
-This client speaks the national API with the **same A1 certificate**. There is no
-token and no separate registration: mutual TLS identifies the company.
+## Authentication
+
+The national API has **one** way in: mutual TLS with the company's **A1 certificate**
+(`CERT_PATH` / `CERT_PASSWORD`). There is no token, no login and no separate registration — the
+certificate's CNPJ is the identity. `issue`, `cancel`, `national-get`, `national-xml`,
+`national-pdf`, `national-docs` and `national-status` all use it, and nothing else.
+
+The Emissor Nacional **web portal** (nfse.gov.br/EmissorNacional) has two other doors: CNPJ and
+password, and the certificate through `certificado.nfse.gov.br`. This client does not use the
+portal, because the API gives it everything it needs: issuing, events, the invoice by key and the
+distribution of every invoice where the CNPJ appears. A CNPJ and password kept in `.env`
+(for example `EMISSOR_NACIONAL_LOGIN` / `EMISSOR_NACIONAL_PASSWORD`) are read by nobody here; they
+are only useful for opening the web portal by hand.
+
+## Who issues
 
 ```bash
 NFSE_EMISSOR=nacional        # in .env — or --issuer nacional per command
 ```
 
-With that set, `issue` and `cancel` go through the national API. Everything else
-(queries, portal, directory) stays on GissOnline.
+Setting it always wins. Left empty, the CLI decides, and says so in the preview:
+
+| Command | Automatic choice |
+| --- | --- |
+| `issue`, `replace` | **national** when the profile's `simplesNacionalOptant` is `1` and today is on or after 2026-11-01; GissOnline otherwise |
+| `cancel` | **national** when called with `--key`; GissOnline with `--number` |
+
+The fallback to GissOnline is deliberate: the national issuer depends on the city's agreement for
+everyone who is not an ME/EPP apportioned through the Simples (see below), so making it the
+default for all would break the other 31 cities' taxpayers.
+
+`issue` and `cancel` then go through the national API. Everything else (queries by number, portal,
+directory) stays on GissOnline.
 
 ## Before the first invoice: is the city ready?
 
