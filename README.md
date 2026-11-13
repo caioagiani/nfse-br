@@ -106,12 +106,24 @@ nfse pdf --number 573                     # the invoice as a file
 ```
 
 ```ts
-import { NfseClient, PortalService } from "nfse-br";
+import { NfseClient, PortalService, buildRps, DEFAULT_PROFILE } from "nfse-br";
 
-// `nfse` and `nfsc` are the two Web Services; `config` and `certificate` come
-// resolved. Destructuring a service is safe — destructuring a method is not.
-const { nfse, config, certificate } = new NfseClient();
+// `national` is the main issuer (Sistema Nacional NFS-e); `nfse` and `nfsc` are
+// the legacy GissOnline Web Services. `config` and `certificate` come resolved.
+// Destructuring a service is safe — destructuring a method is not.
+const client = new NfseClient();
+const { nfse, config, certificate } = client;
 
+// Issuing goes national. `number` is your DPS number: reusing it never issues twice.
+const rps = buildRps(
+  { ...DEFAULT_PROFILE, serviceListItem: "01.09.02", cnaeCode: "6319400", nbsCode: "117031000", rate: 2 },
+  { taker, serviceAmount: 550, description: "Recarga de conta" },
+);
+client.previewIssue(rps, { number: 5 });                  // signed DPS, nothing sent
+const { nfse: issued } = await client.issue(rps, { number: 5 });
+await client.cancel(issued.accessKey, 1, "Erro na emissao do servico");
+
+// GissOnline (legacy, only where the city still serves you): queries and its documents.
 const { invoices } = await nfse.queryProvidedServices({
   issuePeriod: { from: "2026-07-01", to: "2026-07-31" },
 });

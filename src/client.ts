@@ -8,7 +8,13 @@ import {
 import { createXmlSigner } from "./infra/xml-signer.ts";
 import type { QueryResult } from "./providers/giss/messages/parser.ts";
 import { NfscService } from "./providers/giss/nfsc-service.ts";
-import { NationalService } from "./providers/nacional/national-service.ts";
+import {
+  NationalService,
+  type NationalIssueOptions,
+  type NationalIssueOutcome,
+} from "./providers/nacional/national-service.ts";
+import type { NationalCancellationReason } from "./providers/nacional/messages.ts";
+import type { Rps } from "./domain/types.ts";
 import { NfseService } from "./providers/giss/nfse-service.ts";
 
 export interface NfseClientOptions extends Partial<GissConfig> {
@@ -36,10 +42,12 @@ const MEMORY_CERTIFICATE = "<in-memory>";
 export class NfseClient {
   readonly config: GissConfig;
   readonly certificate: Certificate;
-  readonly nfse: NfseService;
-  readonly nfsc: NfscService;
-  /** Sistema Nacional NFS-e — mesmo certificado, assinatura SHA-256 */
+  /** Sistema Nacional NFS-e — o emissor principal. Mesmo certificado, assinatura SHA-256 */
   readonly national: NationalService;
+  /** GissOnline, serviços prestados (SOAP). Legado: o Simples Nacional não emite mais por ele */
+  readonly nfse: NfseService;
+  /** GissOnline, serviços tomados (SOAP) */
+  readonly nfsc: NfscService;
 
   constructor(options: NfseClientOptions = {}) {
     const { debug = false, certificate, ...overrides } = options;
@@ -82,6 +90,43 @@ export class NfseClient {
       cityCode: this.config.cityCode,
       debug,
     });
+  }
+
+  /**
+   * Emite pelo Sistema Nacional. O `number` é o da DPS e vem de você, estável
+   * entre as tentativas: repetir o mesmo número nunca gera duas notas.
+   * Série "1" e a opção do Simples (ME/EPP quando o RPS é de optante) saem do
+   * padrão; passe `series` e `simplesOption` para mudar.
+   */
+  issue(
+    rps: Rps,
+    options: Pick<NationalIssueOptions, "number"> & Partial<NationalIssueOptions>,
+  ): Promise<NationalIssueOutcome> {
+    return this.national.issue(rps, this.#nationalOptions(rps, options));
+  }
+
+  /** A DPS assinada que `issue` enviaria, sem enviar nada. */
+  previewIssue(
+    rps: Rps,
+    options: Pick<NationalIssueOptions, "number"> & Partial<NationalIssueOptions>,
+  ): string {
+    return this.national.previewDps(rps, this.#nationalOptions(rps, options));
+  }
+
+  /** Cancela uma nota nacional pela chave de acesso (evento 101101). */
+  cancel(accessKey: string, reason: NationalCancellationReason, justification: string) {
+    return this.national.cancel(accessKey, reason, justification);
+  }
+
+  #nationalOptions(
+    rps: Rps,
+    options: Pick<NationalIssueOptions, "number"> & Partial<NationalIssueOptions>,
+  ): NationalIssueOptions {
+    return {
+      series: "1",
+      simplesOption: rps.simplesNacionalOptant === 1 ? 3 : 1,
+      ...options,
+    };
   }
 
   /** Identificação do prestador configurado no `.env`. */
