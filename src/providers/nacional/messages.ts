@@ -126,6 +126,9 @@ export function buildDps(rps: Rps, context: DpsContext): string {
           element("nDPS", String(context.number)),
           element("dCompet", isoDate(rps.competenceDate)),
           element("tpEmit", 1),
+          // Produção restrita (esquemas de 2026-10-20): finNFSe passou a ser
+          // obrigatório em infDPS. A produção ainda segue o leiaute de 2026-02-09.
+          context.environment === 2 ? element("finNFSe", 0) : undefined,
           element("cLocEmi", context.cityCode),
           group("prest", [
             element("CNPJ", digitsOnly(context.cnpj)),
@@ -145,8 +148,10 @@ export function buildDps(rps: Rps, context: DpsContext): string {
             group("locPrest", [element("cLocPrestacao", String(service.cityCode))]),
             group("cServ", [
               element("cTribNac", nationalTaxCode(service.serviceListItem)),
-              element("xDescServ", service.description),
-              element("cNBS", service.nbsCode),
+              // Leiaute de 2026-10-20 (restrita): cNBS vem antes de xDescServ
+              ...(context.environment === 2
+                ? [element("cNBS", service.nbsCode), element("xDescServ", service.description)]
+                : [element("xDescServ", service.description), element("cNBS", service.nbsCode)]),
             ]),
             group("infoCompl", [element("xInfComp", rps.additionalInformation)]),
           ]),
@@ -168,14 +173,30 @@ export function buildDps(rps: Rps, context: DpsContext): string {
                   : element("pAliq", amount(values.rate)),
               ]),
               group("tribFed", [
+                // Como a DPS espelhada pela GissOnline (nota 585): CST e tipo de
+                // retenção; base, alíquotas e valores só quando houver.
+                values.pisCofins &&
+                  group("piscofins", [
+                    element("CST", values.pisCofins.cst),
+                    element("vBCPisCofins", positive(values.pisCofins.taxableAmount)),
+                    element("pAliqPis", positive(values.pisCofins.pisRate)),
+                    element("pAliqCofins", positive(values.pisCofins.cofinsRate)),
+                    element("vPis", positive(values.pisCofins.pisAmount)),
+                    element("vCofins", positive(values.pisCofins.cofinsAmount)),
+                    // 0 (não retidos) fica em branco: a Infocus confirmou que não precisa preencher
+                    element("tpRetPisCofins", positive(values.pisCofins.withholdingType)),
+                  ]),
                 element("vRetCP", positive(values.inss)),
                 element("vRetIRRF", positive(values.incomeTax)),
                 element("vRetCSLL", positive(values.csll)),
               ]),
               group("totTrib", [
-                context.simplesOption !== 1 && values.approximateTaxes?.simplesNacional
-                  ? element("pTotTribSN", amount(values.approximateTaxes.simplesNacional))
-                  : element("indTotTrib", 0),
+                // ME/EPP: a SEFIN recusa o indicador (E0712) — só o percentual do Simples
+                simplesMeEpp
+                  ? element("pTotTribSN", amount(values.approximateTaxes?.simplesNacional ?? 0))
+                  : context.simplesOption !== 1 && values.approximateTaxes?.simplesNacional
+                    ? element("pTotTribSN", amount(values.approximateTaxes.simplesNacional))
+                    : element("indTotTrib", 0),
               ]),
             ]),
           ]),

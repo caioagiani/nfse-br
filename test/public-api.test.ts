@@ -14,6 +14,7 @@ describe("API pública", () => {
       "gissProvided",
       "gissTaken",
       "national",
+      "nationalRestricted",
     ]);
   });
 

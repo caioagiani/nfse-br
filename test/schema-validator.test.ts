@@ -8,9 +8,10 @@ import { PROVIDER_CNPJ, SUZANO, sampleRps, testCertificate } from "./helpers.ts"
 
 const hasXmllint = !spawnSync("xmllint", ["--version"], { stdio: "ignore" }).error;
 const NATIONAL = SCHEMA_DIRECTORIES.national;
+const RESTRICTED = SCHEMA_DIRECTORIES.nationalRestricted;
 
 const context = {
-  environment: 2 as const,
+  environment: 1 as const,
   cnpj: PROVIDER_CNPJ,
   cityCode: SUZANO,
   series: "1",
@@ -76,9 +77,19 @@ describe("XSD nacional v1.01", { skip: !hasXmllint && "xmllint não instalado" }
   });
 
   it("um erro real continua sendo erro", () => {
-    const xml = buildDps(sampleRps(), context).replace("<tpAmb>2</tpAmb>", "<tpAmb>9</tpAmb>");
+    const xml = buildDps(sampleRps(), context).replace("<tpAmb>1</tpAmb>", "<tpAmb>9</tpAmb>");
     const result = validateAgainstSchema(xml, "DPS_v1.01.xsd", NATIONAL);
     assert.equal(result?.valid, false);
     assert.ok(result?.errors.some((e) => e.includes("tpAmb")));
+  });
+
+  it("a DPS da produção restrita segue os esquemas de 2026-10-20", () => {
+    const xml = signed(
+      buildDps(sampleRps(), { ...context, environment: 2 }),
+      "infDPS",
+      "DPS355250223796924900011000001000000000000007",
+    );
+    const result = validateAgainstSchema(xml, "DPS_v1.01.xsd", RESTRICTED);
+    assert.deepEqual(result?.errors, []);
   });
 });

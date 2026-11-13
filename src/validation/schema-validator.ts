@@ -32,6 +32,8 @@ export const SCHEMA_DIRECTORIES = {
   gissTaken: "schemas/giss/tomados/vigente",
   /** Sistema Nacional NFS-e, leiaute 1.01 */
   national: "schemas/nacional",
+  /** Produção restrita: esquemas de 2026-10-20 (finNFSe em infDPS, cNBS antes de xDescServ) */
+  nationalRestricted: "schemas/nacional-restrita",
 } as const;
 
 export interface ValidationResult {

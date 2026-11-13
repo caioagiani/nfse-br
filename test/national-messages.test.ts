@@ -155,9 +155,14 @@ describe("buildDps", () => {
   });
 
   it("omite retenções e descontos zerados", () => {
-    assert.doesNotMatch(xml, /<tribFed>/);
+    assert.doesNotMatch(xml, /<vRetCP>|<vRetIRRF>|<vRetCSLL>/);
     assert.doesNotMatch(xml, /<vDescCondIncond>/);
     assert.doesNotMatch(xml, /<infoCompl>/);
+  });
+
+  it("leva PIS/COFINS do perfil (CST 08) sem zeros nem retenção de não retidos", () => {
+    const piscofins = /<piscofins>(.*?)<\/piscofins>/.exec(xml)?.[1];
+    assert.equal(piscofins, "<CST>08</CST>");
   });
 
   it("leva retenções, descontos e informação complementar quando há valor", () => {
@@ -179,8 +184,10 @@ describe("buildDps", () => {
     assert.equal(tag(full, "xInfComp"), "Pedido 42");
   });
 
-  it("totTrib: percentual do Simples quando houver, senão indTotTrib 0", () => {
-    assert.equal(tag(xml, "indTotTrib"), "0");
+  it("totTrib: ME/EPP nunca leva o indicador (E0712); os demais, indTotTrib 0 sem percentual", () => {
+    assert.equal(tag(xml, "pTotTribSN"), "0.00");
+    assert.doesNotMatch(xml, /<indTotTrib>/);
+    assert.equal(tag(buildDps(sampleRps(), { ...context, simplesOption: 1 }), "indTotTrib"), "0");
     const withRate = sampleRps({
       profile: { approximateTaxes: { simplesNacional: 6 } },
     });
