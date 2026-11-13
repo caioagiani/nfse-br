@@ -122,11 +122,15 @@ export class NfseClient {
     rps: Rps,
     options: Pick<NationalIssueOptions, "number"> & Partial<NationalIssueOptions>,
   ): NationalIssueOptions {
+    // Um `undefined` explícito não pode apagar o padrão, como faria um spread simples.
+    const given = Object.fromEntries(
+      Object.entries(options).filter(([, value]) => value !== undefined),
+    );
     return {
       series: "1",
       simplesOption: rps.simplesNacionalOptant === 1 ? 3 : 1,
-      ...options,
-    };
+      ...given,
+    } as NationalIssueOptions;
   }
 
   /** Identificação do prestador configurado no `.env`. */

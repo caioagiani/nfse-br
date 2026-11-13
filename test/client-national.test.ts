@@ -29,6 +29,12 @@ describe("NfseClient — emissão nacional como padrão", () => {
     assert.match(xml, /<opSimpNac>1<\/opSimpNac>/);
   });
 
+  it("undefined explícito não apaga o padrão", () => {
+    const xml = client().previewIssue(sampleRps(), { number: 10, series: undefined, simplesOption: undefined });
+    assert.match(xml, /<serie>1<\/serie>/);
+    assert.match(xml, /<opSimpNac>3<\/opSimpNac>/);
+  });
+
   it("issue e cancel passam pelo serviço nacional", async () => {
     const c = client();
     const calls: unknown[][] = [];
