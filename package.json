@@ -1,6 +1,6 @@
 {
   "name": "nfse-br",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "type": "module",
   "description": "Node/TypeScript client and CLI for Brazilian NFS-e: the Sistema Nacional NFS-e (SEFIN/ADN, the default issuer and the only one left for the Simples Nacional since 2026-11-01) and the GissOnline Web Services (ABRASF 2.04 + LC 214/2025, 32 cities)",
   "keywords": [

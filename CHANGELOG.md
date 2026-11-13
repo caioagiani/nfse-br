@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/[secure]/nfse-br/compare/v2.0.1...v2.1.0) (2026-11-13)
+
+
+### Features
+
+* **nacional:** issue and cancel on the client, national first ([#26](https://github.com/[secure]/nfse-br/issues/26)) ([fa11165](https://github.com/[secure]/nfse-br/commit/fa11165865936c3b4ee0c40ba5873f99f89fb243))
+
 ## [2.0.1](https://github.com/[secure]/nfse-br/compare/v2.0.0...v2.0.1) (2026-11-13)
 
 
