@@ -14,7 +14,12 @@ import {
   type NationalIssueOutcome,
 } from "./providers/nacional/national-service.ts";
 import type { NationalCancellationReason } from "./providers/nacional/messages.ts";
-import type { Rps } from "./domain/types.ts";
+import {
+  buildRps,
+  DEFAULT_PROFILE,
+  type IssueInput,
+  type IssuingProfile,
+} from "./storage/profile-repository.ts";
 import { NfseService } from "./providers/giss/nfse-service.ts";
 
 export interface NfseClientOptions extends Partial<GissConfig> {
@@ -26,6 +31,20 @@ export interface NfseClientOptions extends Partial<GissConfig> {
   certificate?: CertificateInput;
   /** Loga na saída de erro os XMLs enviados e recebidos */
   debug?: boolean;
+  /**
+   * Perfil fiscal do prestador (item, CNAE, NBS, regime…), por cima do
+   * `DEFAULT_PROFILE`. É o que `issue` usa; cada nota só informa o que varia.
+   */
+  profile?: Partial<IssuingProfile>;
+}
+
+/** Uma nota nacional: só o que varia por emissão. O resto vem do `profile` do client. */
+export interface NationalInvoiceInput
+  extends Omit<IssueInput, "rpsNumber" | "rpsType" | "series"> {
+  /** Número da DPS, escolhido por você. Repetir o mesmo número nunca emite duas notas. */
+  number: string | number;
+  /** Série da DPS; por padrão `profile.nationalSeries`, ou "1" */
+  series?: string | number;
 }
 
 /**
@@ -44,13 +63,15 @@ export class NfseClient {
   readonly certificate: Certificate;
   /** Sistema Nacional NFS-e — o emissor principal. Mesmo certificado, assinatura SHA-256 */
   readonly national: NationalService;
+  readonly #profile: IssuingProfile;
   /** GissOnline, serviços prestados (SOAP). Legado: o Simples Nacional não emite mais por ele */
   readonly nfse: NfseService;
   /** GissOnline, serviços tomados (SOAP) */
   readonly nfsc: NfscService;
 
   constructor(options: NfseClientOptions = {}) {
-    const { debug = false, certificate, ...overrides } = options;
+    const { debug = false, certificate, profile, ...overrides } = options;
+    this.#profile = { ...DEFAULT_PROFILE, ...profile };
 
     // `CERT_PATH` e `CERT_PASSWORD` só existem para abrir o arquivo: quando o
     // certificado chega pronto, nada disso é necessário e exigir as variáveis
@@ -92,25 +113,16 @@ export class NfseClient {
     });
   }
 
-  /**
-   * Emite pelo Sistema Nacional. O `number` é o da DPS e vem de você, estável
-   * entre as tentativas: repetir o mesmo número nunca gera duas notas.
-   * Série "1" e a opção do Simples (ME/EPP quando o RPS é de optante) saem do
-   * padrão; passe `series` e `simplesOption` para mudar.
-   */
-  issue(
-    rps: Rps,
-    options: Pick<NationalIssueOptions, "number"> & Partial<NationalIssueOptions>,
-  ): Promise<NationalIssueOutcome> {
-    return this.national.issue(rps, this.#nationalOptions(rps, options));
+  /** Emite pelo Sistema Nacional, com o perfil do client e os dados desta nota. */
+  issue(invoice: NationalInvoiceInput): Promise<NationalIssueOutcome> {
+    const { rps, dps } = this.#compose(invoice);
+    return this.national.issue(rps, dps);
   }
 
   /** A DPS assinada que `issue` enviaria, sem enviar nada. */
-  previewIssue(
-    rps: Rps,
-    options: Pick<NationalIssueOptions, "number"> & Partial<NationalIssueOptions>,
-  ): string {
-    return this.national.previewDps(rps, this.#nationalOptions(rps, options));
+  previewIssue(invoice: NationalInvoiceInput): string {
+    const { rps, dps } = this.#compose(invoice);
+    return this.national.previewDps(rps, dps);
   }
 
   /** Cancela uma nota nacional pela chave de acesso (evento 101101). */
@@ -118,19 +130,25 @@ export class NfseClient {
     return this.national.cancel(accessKey, reason, justification);
   }
 
-  #nationalOptions(
-    rps: Rps,
-    options: Pick<NationalIssueOptions, "number"> & Partial<NationalIssueOptions>,
-  ): NationalIssueOptions {
-    // Um `undefined` explícito não pode apagar o padrão, como faria um spread simples.
-    const given = Object.fromEntries(
-      Object.entries(options).filter(([, value]) => value !== undefined),
-    );
+  #compose({ number, series, ...input }: NationalInvoiceInput) {
+    const profile = { ...this.#profile, ...input.profile };
+    const optant = profile.simplesNacionalOptant === 1;
+    const apportionment = profile.simplesApportionment ?? 1;
+
+    // ME/EPP apurada pelo Simples e sem retenção de ISS não envia alíquota na DPS
+    // (RN 657). O `buildRps` a exige só por causa do GissOnline, então o placeholder
+    // fica aqui dentro e nunca chega ao XML. Em qualquer outro caso, a falta é erro.
+    const rateIsOptional = optant && profile.issWithheld !== 1 && apportionment === 1;
+
     return {
-      series: "1",
-      simplesOption: rps.simplesNacionalOptant === 1 ? 3 : 1,
-      ...given,
-    } as NationalIssueOptions;
+      rps: buildRps(profile, { ...input, rate: input.rate ?? (rateIsOptional ? 0 : undefined) }),
+      dps: {
+        number,
+        series: series ?? profile.nationalSeries ?? "1",
+        simplesOption: profile.simplesOption ?? (optant ? 3 : 1),
+        simplesApportionment: profile.simplesApportionment,
+      } satisfies NationalIssueOptions,
+    };
   }
 
   /** Identificação do prestador configurado no `.env`. */

@@ -106,21 +106,20 @@ nfse pdf --number 573                     # the invoice as a file
 ```
 
 ```ts
-import { NfseClient, PortalService, buildRps, DEFAULT_PROFILE } from "nfse-br";
+import { NfseClient, PortalService } from "nfse-br";
 
 // `national` is the main issuer (Sistema Nacional NFS-e); `nfse` and `nfsc` are
 // the legacy GissOnline Web Services. `config` and `certificate` come resolved.
 // Destructuring a service is safe — destructuring a method is not.
-const client = new NfseClient();
+const client = new NfseClient({
+  // The fiscal profile lives in the client; each invoice only brings what varies.
+  profile: { serviceListItem: "01.09.02", cnaeCode: "6319400", nbsCode: "117031000" },
+});
 const { nfse, config, certificate } = client;
 
-// Issuing goes national. `number` is your DPS number: reusing it never issues twice.
-const rps = buildRps(
-  { ...DEFAULT_PROFILE, serviceListItem: "01.09.02", cnaeCode: "6319400", nbsCode: "117031000", rate: 2 },
-  { taker, serviceAmount: 550, description: "Recarga de conta" },
-);
-client.previewIssue(rps, { number: 5 });                  // signed DPS, nothing sent
-const { nfse: issued } = await client.issue(rps, { number: 5 });
+const invoice = { number: 5, taker, serviceAmount: 550, description: "Recarga de conta" };
+client.previewIssue(invoice);                             // signed DPS, nothing sent
+const { nfse: issued } = await client.issue(invoice);     // `number` is the DPS: reusing it never issues twice
 await client.cancel(issued.accessKey, 1, "Erro na emissao do servico");
 
 // GissOnline (legacy, only where the city still serves you): queries and its documents.

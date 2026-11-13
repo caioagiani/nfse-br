@@ -13,16 +13,17 @@ import {
 
 const client = new NfseClient();
 
-// issuing — Sistema Nacional NFS-e, the main issuer. `number` is the DPS number,
-// chosen by you: reusing it never issues twice.
-const national = buildRps(new ProfileRepository().load(), {
+// issuing — Sistema Nacional NFS-e, the main issuer. The fiscal profile goes in the
+// client (`new NfseClient({ profile })`); each invoice only brings what varies.
+// `number` is the DPS number, chosen by you: reusing it never issues twice.
+const invoice = {
+  number: 5,
   taker: ContactRepository.asServiceTaker(new ContactRepository().find("customer", "acme")!),
   serviceAmount: 1500,
   description: "Software development",
-  rate: 2, // only unlocks buildRps' validation; ME/EPP without withholding sends no pAliq
-});
-client.previewIssue(national, { number: 5 });             // signed DPS, not sent
-const { nfse: issued } = await client.issue(national, { number: 5 });
+};
+client.previewIssue(invoice);                             // signed DPS, not sent
+const { nfse: issued } = await client.issue(invoice);
 await client.cancel(issued.accessKey, 1, "Erro na emissao do servico");
 
 // GissOnline (legacy) — queries below; the Simples Nacional cannot issue there since 2026-11-01
