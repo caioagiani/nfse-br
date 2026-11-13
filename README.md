@@ -172,25 +172,6 @@ validates (manual, section 6.3).
 Commits follow [Conventional Commits](https://www.conventionalcommits.org), enforced by a
 local hook and a CI check. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Releasing
-
-Fully automatic. Merging a pull request into `main` is the whole ritual:
-[semantic-release](https://semantic-release.gitbook.io) reads the conventional
-commits, works out the version, writes the changelog, tags, opens the GitHub
-release, and publishes to npm through
-[trusted publishing](https://docs.npmjs.com/trusted-publishers) — OIDC, no token
-stored anywhere.
-
-| Commit | Release |
-| --- | --- |
-| `fix:` | patch |
-| `feat:` | minor |
-| `feat!:` or `BREAKING CHANGE:` | major |
-| `chore:`, `ci:`, `docs:`, `test:` | none |
-
-Which is why the commit type matters: it is the only input to the version. A
-`fix` labelled as `chore` never ships.
-
 ## Disclaimer
 
 Independent project, not affiliated with Eicon, GissOnline or the Comitê Gestor da NFS-e. The portal REST API is
