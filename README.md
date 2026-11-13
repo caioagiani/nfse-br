@@ -34,8 +34,8 @@ the only way to reach the customer and supplier directory and the municipal acti
 
 | Taxpayer | Issue with | Notes |
 | --- | --- | --- |
-| ME/EPP in the Simples Nacional | **National** (automatic; or `NFSE_EMISSOR=nacional`) | GissOnline stopped issuing for them on 2026-11-01. Confirmed in production (Suzano, 2026-11-13) |
-| Not in the Simples | Whatever the city enables | National only where the city's agreement allows it (`nfse national-status`) |
+| ME/EPP in the Simples Nacional | **National** (the default) | GissOnline stopped issuing for them on 2026-11-01. Confirmed in production (Suzano, 2026-11-13) |
+| Not in the Simples | National is also the default | In a city that has not adopted it, `issue` answers `E0039`: pass `--issuer giss` (check with `nfse national-status`) |
 | MEI | National web issuer | Not exercised by this client; RN 239 exempts MEI from the city agreement too |
 
 GissOnline is still the way to **read** what it already holds: invoices issued until
@@ -83,7 +83,7 @@ their contents never enter the repository.
 ## Quick start
 
 ```bash
-# National issuer — chosen automatically for a Simples Nacional optant (or NFSE_EMISSOR=nacional)
+# National issuer — the default for `issue` (use --issuer giss for a city that has not adopted it)
 nfse national-status                      # the city's agreement (see docs/national.md)
 nfse issue --customer acme --amount 1500 --description "Consulting" --dps 7
 nfse issue --customer acme --amount 1500 --description "Consulting" --dps 7 --confirm
@@ -100,8 +100,8 @@ what the service refused and why, is in [docs/national.md](docs/national.md).
 # GissOnline (queries, directory, and issuing where the city still serves you)
 nfse latest                               # the most recent invoices
 nfse activities --company                 # activity codes this company can use
-nfse issue --customer acme --amount 1500 --description "Consulting"
-nfse issue --customer acme --amount 1500 --description "Consulting" --confirm
+nfse issue --issuer giss --customer acme --amount 1500 --description "Consulting"
+nfse issue --issuer giss --customer acme --amount 1500 --description "Consulting" --confirm
 nfse pdf --number 573                     # the invoice as a file
 ```
 

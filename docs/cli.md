@@ -23,8 +23,8 @@ nfse purchased-protocol --protocol P
 nfse purchased-number --from D --to D --number N --series S
 
 # issuing (nothing is sent without --confirm)
-nfse issue --customer acme --amount 15000 --description "Software development"
-nfse issue --customer acme --amount 15000 --rps 12 --confirm
+nfse issue --issuer giss --customer acme --amount 15000 --description "Software development"
+nfse issue --issuer giss --customer acme --amount 15000 --rps 12 --confirm
                                           # repeating the same --rps is safe:
                                           # an issued RPS is never issued twice
 nfse cancel --number 569 --reason 1 --confirm
@@ -35,7 +35,7 @@ nfse national-status                      # has the city enabled it?
 nfse national-docs                        # invoices and events with your CNPJ
 nfse national-pdf --key 3552502…          # DANFSe by access key
 nfse danfse nfse.xml --event cancel.xml   # DANFSe from a saved XML, offline
-nfse issue --customer acme --amount 15000 --dps 7 --confirm   # a Simples optant goes national by itself
+nfse issue --customer acme --amount 15000 --dps 7 --confirm   # national is the default
 nfse issue --issuer nacional --customer acme --amount 15000 --dps 7 --confirm
 nfse cancel --key 3552502… --reason 1 --text "Valor informado errado" --confirm
 

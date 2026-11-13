@@ -29,12 +29,14 @@ Setting it always wins. Left empty, the CLI decides, and says so in the preview:
 
 | Command | Automatic choice |
 | --- | --- |
-| `issue`, `replace` | **national** when the profile's `simplesNacionalOptant` is `1` and today is on or after 2026-11-01; GissOnline otherwise |
-| `cancel` | **national** when called with `--key`; GissOnline with `--number` |
+| `issue` | **national**, for everyone |
+| `cancel` | **national** with `--key`; GissOnline with `--number` |
+| `replace` | GissOnline, except for a Simples optant after 2026-11-01, who gets the error that says to cancel and issue again |
 
-The fallback to GissOnline is deliberate: the national issuer depends on the city's agreement for
-everyone who is not an ME/EPP apportioned through the Simples (see below), so making it the
-default for all would break the other 31 cities' taxpayers.
+National is the default because it is the country's standard and, since 2026-11-01, the only
+issuer left for the Simples Nacional. A taxpayer who is **not** an ME/EPP apportioned through the
+Simples still depends on the city's agreement (see below): in a city that has not adopted the
+national issuer, `issue` answers `E0039` and the CLI points to `--issuer giss`.
 
 `issue` and `cancel` then go through the national API. Everything else (queries by number, portal,
 directory) stays on GissOnline.

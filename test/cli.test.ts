@@ -107,10 +107,10 @@ describe("CLI — fluxo offline com certificado de teste", () => {
     assert.match(summary.stdout, /Nothing was sent/);
   });
 
-  it("optante do Simples emite pelo nacional quando ninguém escolhe o emissor", () => {
+  it("issue emite pelo nacional quando ninguém escolhe o emissor", () => {
     const result = run("issue", "--customer", "teste", "--amount", "1500", "--description", "Software", "--rate", "2", "--dps", "7");
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /national issuer, chosen automatically/);
+    assert.match(result.stdout, /national issuer, the default/);
     assert.doesNotMatch(result.stdout, /GerarNfseEnvio/);
   });
 
@@ -154,7 +154,7 @@ describe("CLI — fluxo offline com certificado de teste", () => {
     assert.match(result.stdout, /GerarNfseEnvio/);
   });
 
-  it("emissor automático: quem não é do Simples fica no GissOnline", () => {
+  it("emissor automático: quem não é do Simples também emite pelo nacional, mas replace fica no GissOnline", () => {
     const other = mkdtempSync(join(tmpdir(), "nfse-cli-nao-simples-"));
     writeFileSync(join(other, "cert.pfx"), testPfx("segredo"));
     mkdirSync(join(other, "data"));
@@ -163,12 +163,20 @@ describe("CLI — fluxo offline com certificado de teste", () => {
       join(other, "data/contacts.json"),
       readFileSync(join(cwd, "data/contacts.json"), "utf8"),
     );
-    const result = spawnSync(
+    const issue = spawnSync(
       process.execPath,
-      [cli, "issue", "--customer", "teste", "--amount", "1500", "--description", "Software", "--rate", "2", "--xml"],
+      [cli, "issue", "--customer", "teste", "--amount", "1500", "--description", "Software", "--rate", "2", "--dps", "7", "--xml"],
       { cwd: other, env, encoding: "utf8" },
     );
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /GerarNfseEnvio/);
+    assert.equal(issue.status, 0, issue.stderr);
+    assert.match(issue.stdout, /<DPS /);
+    assert.doesNotMatch(issue.stdout, /GerarNfseEnvio/);
+
+    const replace = spawnSync(
+      process.execPath,
+      [cli, "replace", "--number", "10", "--reason", "1", "--customer", "teste", "--amount", "1500", "--description", "Software", "--rate", "2"],
+      { cwd: other, env, encoding: "utf8" },
+    );
+    assert.doesNotMatch(replace.stderr, /not available on the national issuer/);
   });
 });

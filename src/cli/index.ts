@@ -149,7 +149,7 @@ TAX PROFILE
 
 Global options:
   --env producao|homologacao   Environment (default: GISS_ENV from .env)
-  --issuer giss|nacional       Who issues (default: NFSE_EMISSOR; else nacional for a Simples optant, giss otherwise)
+  --issuer giss|nacional       Who issues (default: NFSE_EMISSOR; else nacional for issue, by argument for cancel)
   --json | --xml | --debug     Output format / diagnostics
 `;
 
@@ -647,9 +647,10 @@ function warnSimplesDeadline(rps: Rps): void {
 
 /**
  * Quem emite quando o usuário não disse: `NFSE_EMISSOR` e `--issuer` sempre mandam.
- * Sem eles, optante do Simples emite pelo nacional desde 01/11/2026 (o GissOnline
- * deixou de aceitá-lo); quem cancela com `--key` também só pode estar no nacional.
- * Fora disso fica no GissOnline, porque o nacional depende do convênio da cidade.
+ * Sem eles, `issue` vai ao nacional — é o padrão do país e o único que o Simples
+ * ainda tem desde 01/11/2026. `cancel` segue o argumento: `--key` é do nacional,
+ * `--number` é do GissOnline. `replace` só existe no GissOnline, salvo para o
+ * optante do Simples, que não tem mais o que substituir lá (o erro explica).
  */
 function resolveIssuer(
   config: GissConfig,
@@ -657,19 +658,22 @@ function resolveIssuer(
   values: CliValues,
 ): { issuer: Issuer; source: "explicit" | "automatic" } {
   if (config.issuerExplicit) return { issuer: config.issuer, source: "explicit" };
-  if (command === "cancel" && values.key) return { issuer: "nacional", source: "automatic" };
-  if (command === "issue" || command === "replace") {
+  if (command === "issue") return { issuer: "nacional", source: "automatic" };
+  if (command === "cancel") {
+    return { issuer: values.key ? "nacional" : "giss", source: "automatic" };
+  }
+  if (command === "replace") {
     let optant = false;
     try {
       optant = new ProfileRepository().load().simplesNacionalOptant === 1;
     } catch {
-      // sem perfil legível, fica no padrão
+      // sem perfil legível, fica no GissOnline
     }
     if (optant && isoDate(new Date()) >= SIMPLES_NATIONAL_DEADLINE) {
       return { issuer: "nacional", source: "automatic" };
     }
   }
-  return { issuer: config.issuer, source: "automatic" };
+  return { issuer: "giss", source: "automatic" };
 }
 
 const NATIONAL_REASONS: Record<string, string> = {
@@ -816,7 +820,7 @@ async function runNationalCommand(
         if (values.xml) return void console.log(preview), true;
         console.log(issueSummary(values, rps));
         console.log(
-          `DPS:           ${number} series ${issueOptions.series} (national issuer${source === "automatic" ? ", chosen automatically for a Simples Nacional optant" : ""})`,
+          `DPS:           ${number} series ${issueOptions.series} (national issuer${source === "automatic" ? ", the default; --issuer giss for GissOnline" : ""})`,
         );
         printValidation(preview, "DPS_v1.01.xsd", SCHEMA_DIRECTORIES.national);
         console.log("\nNothing was sent. Repeat with --confirm to actually issue.");
@@ -1601,7 +1605,7 @@ function printError(error: unknown, debug: boolean): void {
 
   if (messages.some((m) => m.code === "E0039")) {
     console.error(
-      `\nThe city has not enabled the national issuer yet. Check with: ${INVOCATION} national-status`,
+      `\nThe city has not enabled the national issuer for this taxpayer. Check with: ${INVOCATION} national-status — or issue through GissOnline with --issuer giss`,
     );
   }
   if (debug && error.cause) console.error("\ncause:", error.cause);
