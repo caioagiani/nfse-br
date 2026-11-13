@@ -1,14 +1,21 @@
-# gissonline-nfse
+# nfse-br
 
-Node/TypeScript client for the **GissOnline** Web Services — Brazilian municipal service
-invoices (NFS-e) following the ABRASF 2.04 standard with the LC 214/2025 extensions
-(NT SE/CGNFS-e nº 007). Works with every city that runs GissOnline — **32 of them**,
-24 in São Paulo, including Guarulhos, Santos and Santo André. The city is one
-environment variable; see [docs/municipalities.md](docs/municipalities.md).
+Node/TypeScript client and CLI for Brazilian service invoices (NFS-e), with two issuing
+systems behind one certificate and one command line:
 
-Covers all **16 operations** of the two published SOAP services — `nfse` (services provided)
-and `nfsc` (services received) — plus the portal REST API, the only way to reach the
-customer and supplier directory and the municipal activity table.
+- **Sistema Nacional NFS-e** (SEFIN + ADN): the national issuer, and the way to issue for the
+  **Simples Nacional** since 2026-11-01 (Res. CGSN 191/2026). Issue, cancel, query, DANFSe.
+  See [docs/national.md](docs/national.md).
+- **GissOnline** (legacy for the Simples): the Web Services of **32 cities** (24 in São Paulo,
+  including Guarulhos, Santos and Santo André). It follows ABRASF 2.04 with the LC 214/2025
+  extensions (NT SE/CGNFS-e nº 007). The city is one environment variable; see
+  [docs/municipalities.md](docs/municipalities.md).
+
+Formerly `gissonline-nfse`. The `giss` command and `GissClient` still work as aliases.
+
+On GissOnline it covers all **16 operations** of the two published SOAP services: `nfse`
+(services provided) and `nfsc` (services received). It also covers the portal REST API,
+the only way to reach the customer and supplier directory and the municipal activity table.
 
 - Issue, cancel and replace invoices, single or in batches
 - Queries by period, competence, number range, RPS and protocol
@@ -18,12 +25,32 @@ customer and supplier directory and the municipal activity table.
 - Portal login with that same certificate, so no CPF and password are needed
 - Fale Conosco messages: read the replies from the city hall, and open new ones
 - Validation against the official XSD before sending
+- National issuer: issue, cancel, query, DANFSe and the distribution of every invoice
+  where your CNPJ appears
+- Typed errors that say whether a retry is safe; see [docs/errors.md](docs/errors.md)
 - No write operation fires without `--confirm`
+
+## Which system issues?
+
+| Taxpayer | Issue with | Notes |
+| --- | --- | --- |
+| ME/EPP in the Simples Nacional | **National** (the default) | GissOnline stopped issuing for them on 2026-11-01. Confirmed in production (Suzano, 2026-11-13) |
+| Not in the Simples | National is also the default | In a city that has not adopted it, `issue` answers `E0039`: pass `--issuer giss` (check with `nfse national-status`) |
+| MEI | National web issuer | Not exercised by this client; RN 239 exempts MEI from the city agreement too |
+
+GissOnline is still the way to **read** what it already holds: invoices issued until
+2026-10-31, the customer and supplier directory, the activity table and the Fale Conosco
+messages. Its issuing, cancelling and replacing are still in the client, but a Simples optant
+should not count on them: GissOnline blocks them since 2026-11-01, and on 2026-11-13 its
+homologation environment refused an RPS with `E160` (schema). Not tested in production.
+
+Numbering is separate: the national system numbers invoices from 1 per issuer, apart from
+GissOnline's sequence. `nDPS` (the request number) is yours to choose with `--dps`.
 
 ## Requirements
 
-- Node 20+ to use the published package; 24+ to run from the repository without a build,
-  since `.ts` files execute natively
+- Node 22+. Running from the repository without a build needs 22.18+, where `.ts` files
+  execute natively
 - A1 ICP-Brasil digital certificate (`.pfx`) for the provider
 - `xmllint` (optional) — enables XSD validation before sending
 
@@ -32,11 +59,11 @@ customer and supplier directory and the municipal activity table.
 ### As a package
 
 ```bash
-npm install gissonline-nfse        # in a project
-npm install -g gissonline-nfse     # or globally, for the giss command
+npm install nfse-br        # in a project
+npm install -g nfse-br     # or globally, for the nfse command
 ```
 
-The `giss` binary becomes available in the shell and reads the `.env` of the current
+The `nfse` binary (with `giss` kept as an alias) becomes available in the shell and reads the `.env` of the current
 directory. Shell completion for bash and zsh is described in [docs/cli.md](docs/cli.md#shell-completion).
 
 ### From the repository
@@ -45,10 +72,10 @@ directory. Shell completion for bash and zsh is described in [docs/cli.md](docs/
 npm install
 cp .env.example .env                    # fill in the credentials
 cp /path/to/certificate.pfx cert/       # the folder ships empty
-npm run giss -- latest                  # same as `giss latest`
+npm run nfse -- latest                  # same as `nfse latest`
 ```
 
-Scripts: `npm run build` (compiles to `dist/`), `npm run typecheck`, `npm run giss`.
+Scripts: `npm run build` (compiles to `dist/`), `npm run typecheck`, `npm run nfse`.
 
 `cert/` and `data/` are versioned empty (just a `.gitkeep`) to mark where the files go —
 their contents never enter the repository.
@@ -56,19 +83,34 @@ their contents never enter the repository.
 ## Quick start
 
 ```bash
-giss latest                               # the most recent invoices
-giss activities --company                 # activity codes this company can use
-giss issue --customer acme --amount 1500 --description "Consulting"
-giss issue --customer acme --amount 1500 --description "Consulting" --confirm
-giss pdf --number 573                     # the invoice as a file
+# National issuer — the default for `issue` (use --issuer giss for a city that has not adopted it)
+nfse national-status                      # the city's agreement (see docs/national.md)
+nfse issue --customer acme --amount 1500 --description "Consulting" --dps 7
+nfse issue --customer acme --amount 1500 --description "Consulting" --dps 7 --confirm
+nfse national-pdf --key <50-digit key>    # the DANFSe, rendered from the invoice XML
+nfse cancel --key <key> --reason 1 --text "Wrong service code, will be reissued" --confirm
+```
+
+For an ME/EPP apportioned through the Simples the DPS carries no ISS rate (the DAS carries
+it). Pass `--item`, `--cnae` and `--nbs` of the service you are billing: the default profile
+is software development. Use `--dps N` in sequence so a retry is safe. The step by step, with
+what the service refused and why, is in [docs/national.md](docs/national.md).
+
+```bash
+# GissOnline (queries, directory, and issuing where the city still serves you)
+nfse latest                               # the most recent invoices
+nfse activities --company                 # activity codes this company can use
+nfse issue --issuer giss --customer acme --amount 1500 --description "Consulting"
+nfse issue --issuer giss --customer acme --amount 1500 --description "Consulting" --confirm
+nfse pdf --number 573                     # the invoice as a file
 ```
 
 ```ts
-import { GissClient, PortalService } from "gissonline-nfse";
+import { NfseClient, PortalService } from "nfse-br";
 
 // `nfse` and `nfsc` are the two Web Services; `config` and `certificate` come
 // resolved. Destructuring a service is safe — destructuring a method is not.
-const { nfse, config, certificate } = new GissClient();
+const { nfse, config, certificate } = new NfseClient();
 
 const { invoices } = await nfse.queryProvidedServices({
   issuePeriod: { from: "2026-07-01", to: "2026-07-31" },
@@ -97,14 +139,17 @@ Nothing that writes fires without `--confirm`.
 | [docs/library.md](docs/library.md) | Using it as a package, and the 16 operations |
 | [docs/configuration.md](docs/configuration.md) | `.env`, serving several companies, tax profile, homologation |
 | [docs/issuing.md](docs/issuing.md) | What actually issues an invoice, and why |
+| [docs/national.md](docs/national.md) | The national issuer: the 2026-11-01 move for Simples Nacional, what the live service accepts, numbering |
+| [docs/errors.md](docs/errors.md) | Error codes, retries, and what is safe to repeat |
 | [docs/gotchas.md](docs/gotchas.md) | What the live service taught us the hard way |
 | [docs/architecture.md](docs/architecture.md) | Layers, patterns, mTLS, SOAP and the signature |
 
 Under `docs/`: technical manuals (Services Provided v1.6, Services Received/CST v2.5,
-PIS/COFINS/CSLL v1.0), XSD schemas, XML samples and the errors and alerts spreadsheet.
+PIS/COFINS/CSLL v1.0), XML samples and the errors and alerts spreadsheet. The XSD live
+in `schemas/`, one folder per provider.
 Source: <https://suzano.giss.com.br/giss-ajuda/desenvolvedores.html>.
 
-`docs/schemas-tomados/vigente/` carries the services-received XSD with the `tipos` v1_01
+`schemas/giss/tomados/vigente/` carries the services-received XSD with the `tipos` v1_01
 merged over v1_00 — necessary because the published v1_01 is a delta that does not compile
 on its own. The originals stay untouched in the directory above.
 
@@ -148,7 +193,7 @@ Which is why the commit type matters: it is the only input to the version. A
 
 ## Disclaimer
 
-Independent project, not affiliated with Eicon or GissOnline. The portal REST API is
+Independent project, not affiliated with Eicon, GissOnline or the Comitê Gestor da NFS-e. The portal REST API is
 internal and has no public contract — it may change without notice. Issuing, cancelling or
 replacing an invoice has real tax effects: check the profile values with your accountant
 before using `--confirm` in production.
