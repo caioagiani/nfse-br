@@ -3,12 +3,13 @@
 Node/TypeScript client and CLI for Brazilian service invoices (NFS-e), with two issuing
 systems behind one certificate and one command line:
 
-- **GissOnline**: the Web Services of **32 cities** (24 in São Paulo, including Guarulhos,
-  Santos and Santo André). It follows ABRASF 2.04 with the LC 214/2025 extensions
-  (NT SE/CGNFS-e nº 007). The city is one environment variable; see
+- **Sistema Nacional NFS-e** (SEFIN + ADN): the national issuer, and the way to issue for the
+  **Simples Nacional** since 2026-11-01 (Res. CGSN 191/2026). Issue, cancel, query, DANFSe.
+  See [docs/national.md](docs/national.md).
+- **GissOnline** (legacy for the Simples): the Web Services of **32 cities** (24 in São Paulo,
+  including Guarulhos, Santos and Santo André). It follows ABRASF 2.04 with the LC 214/2025
+  extensions (NT SE/CGNFS-e nº 007). The city is one environment variable; see
   [docs/municipalities.md](docs/municipalities.md).
-- **Sistema Nacional NFS-e**: the national issuer (SEFIN + ADN). It is mandatory for the
-  Simples Nacional from 2026-11-01; see [docs/national.md](docs/national.md).
 
 Formerly `gissonline-nfse`. The `giss` command and `GissClient` still work as aliases.
 
@@ -28,6 +29,23 @@ the only way to reach the customer and supplier directory and the municipal acti
   where your CNPJ appears
 - Typed errors that say whether a retry is safe; see [docs/errors.md](docs/errors.md)
 - No write operation fires without `--confirm`
+
+## Which system issues?
+
+| Taxpayer | Issue with | Notes |
+| --- | --- | --- |
+| ME/EPP in the Simples Nacional | **National** (`NFSE_EMISSOR=nacional`) | GissOnline stopped issuing for them on 2026-11-01. Confirmed in production (Suzano, 2026-11-13) |
+| Not in the Simples | Whatever the city enables | National only where the city's agreement allows it (`nfse national-status`) |
+| MEI | National web issuer | Not exercised by this client; RN 239 exempts MEI from the city agreement too |
+
+GissOnline is still the way to **read** what it already holds: invoices issued until
+2026-10-31, the customer and supplier directory, the activity table and the Fale Conosco
+messages. Its issuing, cancelling and replacing are still in the client, but a Simples optant
+should not count on them: GissOnline blocks them since 2026-11-01, and on 2026-11-13 its
+homologation environment refused an RPS with `E160` (schema). Not tested in production.
+
+Numbering is separate: the national system numbers invoices from 1 per issuer, apart from
+GissOnline's sequence. `nDPS` (the request number) is yours to choose with `--dps`.
 
 ## Requirements
 
@@ -65,6 +83,21 @@ their contents never enter the repository.
 ## Quick start
 
 ```bash
+# National issuer (Simples Nacional) — set once in .env: NFSE_EMISSOR=nacional
+nfse national-status                      # the city's agreement (see docs/national.md)
+nfse issue --customer acme --amount 1500 --description "Consulting" --dps 7
+nfse issue --customer acme --amount 1500 --description "Consulting" --dps 7 --confirm
+nfse national-pdf --key <50-digit key>    # the DANFSe, rendered from the invoice XML
+nfse cancel --key <key> --reason 1 --text "Wrong service code, will be reissued" --confirm
+```
+
+For an ME/EPP apportioned through the Simples the DPS carries no ISS rate (the DAS carries
+it). Pass `--item`, `--cnae` and `--nbs` of the service you are billing: the default profile
+is software development. Use `--dps N` in sequence so a retry is safe. The step by step, with
+what the service refused and why, is in [docs/national.md](docs/national.md).
+
+```bash
+# GissOnline (queries, directory, and issuing where the city still serves you)
 nfse latest                               # the most recent invoices
 nfse activities --company                 # activity codes this company can use
 nfse issue --customer acme --amount 1500 --description "Consulting"
@@ -106,7 +139,7 @@ Nothing that writes fires without `--confirm`.
 | [docs/library.md](docs/library.md) | Using it as a package, and the 16 operations |
 | [docs/configuration.md](docs/configuration.md) | `.env`, serving several companies, tax profile, homologation |
 | [docs/issuing.md](docs/issuing.md) | What actually issues an invoice, and why |
-| [docs/national.md](docs/national.md) | The national issuer, and the 2026-11-01 move for Simples Nacional |
+| [docs/national.md](docs/national.md) | The national issuer: the 2026-11-01 move for Simples Nacional, what the live service accepts, numbering |
 | [docs/errors.md](docs/errors.md) | Error codes, retries, and what is safe to repeat |
 | [docs/gotchas.md](docs/gotchas.md) | What the live service taught us the hard way |
 | [docs/architecture.md](docs/architecture.md) | Layers, patterns, mTLS, SOAP and the signature |
@@ -160,7 +193,7 @@ Which is why the commit type matters: it is the only input to the version. A
 
 ## Disclaimer
 
-Independent project, not affiliated with Eicon or GissOnline. The portal REST API is
+Independent project, not affiliated with Eicon, GissOnline or the Comitê Gestor da NFS-e. The portal REST API is
 internal and has no public contract — it may change without notice. Issuing, cancelling or
 replacing an invoice has real tax effects: check the profile values with your accountant
 before using `--confirm` in production.
