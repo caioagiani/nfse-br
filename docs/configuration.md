@@ -134,3 +134,17 @@ That is what `--env homologacao` uses. Two known limits: the provider CNPJ is **
 registered** there, so operations stop at `E361 — Empresa não localizada` (which is exactly
 the useful ceiling for testing schema and signature); and `tpRetPisCofins` is rejected with
 `E160` even though it is in the published XSD and in real production invoices.
+
+## Security
+
+Never committed (already covered by `.gitignore`):
+
+- `.env` — certificate password and portal credentials
+- `cert/*` — the `.pfx` and exported PEM files (the key is written **without a passphrase**,
+  mode `0600`)
+- `data/*` — local directory and tax profile, holding third-party data
+
+Two notes on the code: the `APP_ID` in `portal-service.ts` is not a secret — it is a public
+constant from the portal bundle, sent by any browser that opens the site. And the signature
+uses `rsa-sha1` with a `sha1` digest: weak by today's standards, but it is what the service
+validates (manual, section 6.3).

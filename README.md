@@ -1,51 +1,24 @@
 # nfse-br
 
-Node/TypeScript client and CLI for Brazilian service invoices (NFS-e), with two issuing
-systems behind one certificate and one command line:
+Node/TypeScript client and CLI for Brazilian service invoices (NFS-e) through the
+**Sistema Nacional NFS-e** (SEFIN + ADN) — the issuer for the **Simples Nacional** since
+2026-11-01 (Res. CGSN 191/2026). One A1 certificate, one command line.
+Formerly `gissonline-nfse`; the `giss` command and `GissClient` still work as aliases.
 
-- **Sistema Nacional NFS-e** (SEFIN + ADN): the national issuer, and the way to issue for the
-  **Simples Nacional** since 2026-11-01 (Res. CGSN 191/2026). Issue, cancel, query, DANFSe.
-  See [docs/national.md](docs/national.md).
-- **GissOnline** (legacy for the Simples): the Web Services of **32 cities** (24 in São Paulo,
-  including Guarulhos, Santos and Santo André). It follows ABRASF 2.04 with the LC 214/2025
-  extensions (NT SE/CGNFS-e nº 007). The city is one environment variable; see
-  [docs/municipalities.md](docs/municipalities.md).
-
-Formerly `gissonline-nfse`. The `giss` command and `GissClient` still work as aliases.
-
-On GissOnline it covers all **16 operations** of the two published SOAP services: `nfse`
-(services provided) and `nfsc` (services received). It also covers the portal REST API,
-the only way to reach the customer and supplier directory and the municipal activity table.
-
-- Issue, cancel and replace invoices, single or in batches
-- Queries by period, competence, number range, RPS and protocol
-- The city activity table, where `CodigoTributacaoMunicipio` and its LC 116 item come from
-- Declaration of received services (supplier invoices)
-- XMLDSig signing with an A1 certificate, in the shape each operation requires
-- Portal login with that same certificate, so no CPF and password are needed
-- Fale Conosco messages: read the replies from the city hall, and open new ones
+- Issue and cancel invoices, signed in SHA-256 over mutual TLS
+- Query by access key or DPS, and the distribution of every invoice where your CNPJ appears
+- DANFSe rendered locally from the invoice XML (NT 008)
 - Validation against the official XSD before sending
-- National issuer: issue, cancel, query, DANFSe and the distribution of every invoice
-  where your CNPJ appears
 - Typed errors that say whether a retry is safe; see [docs/errors.md](docs/errors.md)
 - No write operation fires without `--confirm`
 
-## Which system issues?
+The step by step, with what the live service accepts and refuses, is in
+[docs/national.md](docs/national.md). The other guides are in [docs/](docs/).
 
-| Taxpayer | Issue with | Notes |
-| --- | --- | --- |
-| ME/EPP in the Simples Nacional | **National** (the default) | GissOnline stopped issuing for them on 2026-11-01. Confirmed in production (Suzano, 2026-11-13) |
-| Not in the Simples | National is also the default | In a city that has not adopted it, `issue` answers `E0039`: pass `--issuer giss` (check with `nfse national-status`) |
-| MEI | National web issuer | Not exercised by this client; RN 239 exempts MEI from the city agreement too |
-
-GissOnline is still the way to **read** what it already holds: invoices issued until
-2026-10-31, the customer and supplier directory, the activity table and the Fale Conosco
-messages. Its issuing, cancelling and replacing are still in the client, but a Simples optant
-should not count on them: GissOnline blocks them since 2026-11-01, and on 2026-11-13 its
-homologation environment refused an RPS with `E160` (schema). Not tested in production.
-
-Numbering is separate: the national system numbers invoices from 1 per issuer, apart from
-GissOnline's sequence. `nDPS` (the request number) is yours to choose with `--dps`.
+> **GissOnline is legacy.** The Web Services of 32 cities (ABRASF 2.04) are still in the
+> client for reading what they hold and for taxpayers outside the Simples, but a Simples
+> optant cannot issue there anymore. Pass `--issuer giss` to use them; see
+> [docs/municipalities.md](docs/municipalities.md).
 
 ## Requirements
 
@@ -83,7 +56,6 @@ their contents never enter the repository.
 ## Quick start
 
 ```bash
-# National issuer — the default for `issue` (use --issuer giss for a city that has not adopted it)
 nfse national-status                      # the city's agreement (see docs/national.md)
 nfse issue --customer acme --amount 1500 --description "Consulting" --dps 7
 nfse issue --customer acme --amount 1500 --description "Consulting" --dps 7 --confirm
@@ -93,17 +65,7 @@ nfse cancel --key <key> --reason 1 --text "Wrong service code, will be reissued"
 
 For an ME/EPP apportioned through the Simples the DPS carries no ISS rate (the DAS carries
 it). Pass `--item`, `--cnae` and `--nbs` of the service you are billing: the default profile
-is software development. Use `--dps N` in sequence so a retry is safe. The step by step, with
-what the service refused and why, is in [docs/national.md](docs/national.md).
-
-```bash
-# GissOnline (queries, directory, and issuing where the city still serves you)
-nfse latest                               # the most recent invoices
-nfse activities --company                 # activity codes this company can use
-nfse issue --issuer giss --customer acme --amount 1500 --description "Consulting"
-nfse issue --issuer giss --customer acme --amount 1500 --description "Consulting" --confirm
-nfse pdf --number 573                     # the invoice as a file
-```
+is software development. Use `--dps N` in sequence so a retry is safe.
 
 ```ts
 import { NfseClient } from "nfse-br";
@@ -136,48 +98,7 @@ const { nfse } = await client.issue(invoice);
 await client.cancel(nfse.accessKey, 1, "Erro na emissao do servico");
 ```
 
-GissOnline queries, the portal directory and the documents it serves are in
-[docs/library.md](docs/library.md).
-
-Nothing that writes fires without `--confirm`.
-
-## Documentation
-
-| | |
-| --- | --- |
-| [examples/](examples/) | Runnable scripts, all checked against production |
-| [docs/cli.md](docs/cli.md) | Every command, completion, documents and lookups |
-| [docs/municipalities.md](docs/municipalities.md) | The cities that publish the Web Service |
-| [docs/library.md](docs/library.md) | Using it as a package, and the 16 operations |
-| [docs/configuration.md](docs/configuration.md) | `.env`, serving several companies, tax profile, homologation |
-| [docs/issuing.md](docs/issuing.md) | What actually issues an invoice, and why |
-| [docs/national.md](docs/national.md) | The national issuer: the 2026-11-01 move for Simples Nacional, what the live service accepts, numbering |
-| [docs/errors.md](docs/errors.md) | Error codes, retries, and what is safe to repeat |
-| [docs/gotchas.md](docs/gotchas.md) | What the live service taught us the hard way |
-| [docs/architecture.md](docs/architecture.md) | Layers, patterns, mTLS, SOAP and the signature |
-
-Under `docs/`: technical manuals (Services Provided v1.6, Services Received/CST v2.5,
-PIS/COFINS/CSLL v1.0), XML samples and the errors and alerts spreadsheet. The XSD live
-in `schemas/`, one folder per provider.
-Source: <https://suzano.giss.com.br/giss-ajuda/desenvolvedores.html>.
-
-`schemas/giss/tomados/vigente/` carries the services-received XSD with the `tipos` v1_01
-merged over v1_00 — necessary because the published v1_01 is a delta that does not compile
-on its own. The originals stay untouched in the directory above.
-
-## Security
-
-Never committed (already covered by `.gitignore`):
-
-- `.env` — certificate password and portal credentials
-- `cert/*` — the `.pfx` and exported PEM files (the key is written **without a passphrase**,
-  mode `0600`)
-- `data/*` — local directory and tax profile, holding third-party data
-
-Two notes on the code: the `APP_ID` in `portal-service.ts` is not a secret — it is a public
-constant from the portal bundle, sent by any browser that opens the site. And the signature
-uses `rsa-sha1` with a `sha1` digest: weak by today's standards, but it is what the service
-validates (manual, section 6.3).
+GissOnline queries and the portal directory are in [docs/library.md](docs/library.md).
 
 ## Contributing
 
