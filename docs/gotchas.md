@@ -8,10 +8,15 @@ All found by testing against the live service:
   not succeed against that city.
 - **Suzano refuses `OutrasRetencoes` in the RPS, even at zero** (`E370`). The XSD makes it
   optional, so the client leaves it out unless there is a value.
-- **The national issuer depends on the city, not on the taxpayer.** A DPS that is valid in
-  every other respect is refused with `E0039` until the city sets
-  `aderenteEmissorNacional`. `nfse national-status` reads that flag. See
-  [national.md](national.md).
+- **The national issuer depends on the city, except for an ME/EPP in the Simples.** A DPS valid in
+  every other respect is refused with `E0039` until the city sets `aderenteEmissorNacional` — but
+  RN 239 exempts an ME/EPP apportioned through the Simples (`regApTribSN = 1`) with competence on
+  or after 2026-11-01, so the flag is not the criterion for them. `nfse national-status` reads it
+  anyway. See [national.md](national.md).
+- **The ISS rate does not go in the DPS of an ME/EPP without withholding** (`E0625`), and a
+  `indTotTrib` there is refused (`E0712`). See [national.md](national.md).
+- **`--item 01.09` becomes `cTribNac 010901` (audio).** For video, image and text, such as an
+  SMS credit top-up, pass `--item 01.09.02`.
 - **The national XSD rejects every `serie`.** Its pattern is `^0{0,4}\d{1,5}$`, and in XSD
   `^` and `$` are literal characters, not anchors. The validator lists it as a known
   divergence.

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
@@ -132,5 +132,43 @@ describe("CLI — fluxo offline com certificado de teste", () => {
     assert.match(result.stdout, /<DPS [^>]*xmlns="http:\/\/www\.sped\.fazenda\.gov\.br\/nfse"/);
     assert.match(result.stdout, new RegExp(`Id="DPS35525022${PROVIDER_CNPJ}0000[0-9]{1}000000000000007"`));
     assert.match(result.stdout, /rsa-sha256/);
+  });
+
+  it("emissor automático: cancel --key vai ao nacional, cancel --number não", () => {
+    const key = "35525022379692490001100000000000000126116808946208";
+    const national = run("cancel", "--key", key, "--reason", "1", "--text", "Erro na emissao do servico");
+    assert.equal(national.status, 0, national.stderr);
+    assert.match(national.stdout, new RegExp(`Would cancel ${key}`));
+
+    const city = run("cancel", "--number", "10", "--reason", "1");
+    assert.match(city.stdout, /Would cancel invoice 10/);
+  });
+
+  it("emissor explícito vence o automático (NFSE_EMISSOR=giss)", () => {
+    const result = spawnSync(
+      process.execPath,
+      [cli, "issue", "--customer", "teste", "--amount", "1500", "--description", "Software", "--rate", "2", "--xml"],
+      { cwd, env: { ...env, NFSE_EMISSOR: "giss" }, encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /GerarNfseEnvio/);
+  });
+
+  it("emissor automático: quem não é do Simples fica no GissOnline", () => {
+    const other = mkdtempSync(join(tmpdir(), "nfse-cli-nao-simples-"));
+    writeFileSync(join(other, "cert.pfx"), testPfx("segredo"));
+    mkdirSync(join(other, "data"));
+    writeFileSync(join(other, "data/profile.json"), JSON.stringify({ simplesNacionalOptant: 2 }));
+    writeFileSync(
+      join(other, "data/contacts.json"),
+      readFileSync(join(cwd, "data/contacts.json"), "utf8"),
+    );
+    const result = spawnSync(
+      process.execPath,
+      [cli, "issue", "--customer", "teste", "--amount", "1500", "--description", "Software", "--rate", "2", "--xml"],
+      { cwd: other, env, encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /GerarNfseEnvio/);
   });
 });

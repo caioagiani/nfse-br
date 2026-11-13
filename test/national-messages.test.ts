@@ -49,6 +49,8 @@ describe("nationalTaxCode", () => {
 
   it("mantém o desdobramento informado", () => {
     assert.equal(nationalTaxCode("17.01.02"), "170102");
+    // 01.09 sozinho é áudio (010901); a recarga de SMS é vídeo, imagem e texto (010902)
+    assert.equal(nationalTaxCode("01.09.02"), "010902");
   });
 
   it("recusa o que não vira seis dígitos", () => {

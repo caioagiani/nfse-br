@@ -35,8 +35,9 @@ nfse national-status                      # has the city enabled it?
 nfse national-docs                        # invoices and events with your CNPJ
 nfse national-pdf --key 3552502…          # DANFSe by access key
 nfse danfse nfse.xml --event cancel.xml   # DANFSe from a saved XML, offline
+nfse issue --customer acme --amount 15000 --dps 7 --confirm   # a Simples optant goes national by itself
 nfse issue --issuer nacional --customer acme --amount 15000 --dps 7 --confirm
-nfse cancel --issuer nacional --key 3552502… --reason 1 --text "Valor informado errado" --confirm
+nfse cancel --key 3552502… --reason 1 --text "Valor informado errado" --confirm
 
 # documents of an issued invoice
 nfse pdf --number 573                     # writes ./nfse-573.pdf
