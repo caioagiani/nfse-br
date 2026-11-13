@@ -52,7 +52,11 @@ export type {
 } from "./providers/giss/soap-client.ts";
 
 export { NfseClient, GissClient } from "./client.ts";
-export type { NfseClientOptions, GissClientOptions } from "./client.ts";
+export type {
+  NfseClientOptions,
+  GissClientOptions,
+  NationalInvoiceInput,
+} from "./client.ts";
 export {
   lookupZip,
   lookupCompany,

@@ -13,6 +13,20 @@ import {
 
 const client = new NfseClient();
 
+// issuing — Sistema Nacional NFS-e, the main issuer. The fiscal profile goes in the
+// client (`new NfseClient({ profile })`); each invoice only brings what varies.
+// `number` is the DPS number, chosen by you: reusing it never issues twice.
+const invoice = {
+  number: 5,
+  taker: ContactRepository.asServiceTaker(new ContactRepository().find("customer", "acme")!),
+  serviceAmount: 1500,
+  description: "Software development",
+};
+client.previewIssue(invoice);                             // signed DPS, not sent
+const { nfse: issued } = await client.issue(invoice);
+await client.cancel(issued.accessKey, 1, "Erro na emissao do servico");
+
+// GissOnline (legacy) — queries below; the Simples Nacional cannot issue there since 2026-11-01
 // query
 const { invoices } = await client.nfse.queryProvidedServices({
   issuePeriod: { from: "2026-07-01", to: "2026-07-31" },
@@ -25,7 +39,7 @@ for await (const page of client.paginate((page) =>
   console.log(page.invoices.length);
 }
 
-// issuing
+// issuing through GissOnline
 const taker = ContactRepository.asServiceTaker(
   new ContactRepository().find("customer", "acme")!,
 );
