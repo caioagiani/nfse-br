@@ -1,3 +1,89 @@
+# [2.0.0](https://github.com/[secure]/nfse-br/compare/v1.9.0...v2.0.0) (2026-11-13)
+
+
+* feat!: national NFS-e issuer, typed errors, and rename to nfse-br ([#23](https://github.com/[secure]/nfse-br/issues/23)) ([1e8f70f](https://github.com/[secure]/nfse-br/commit/1e8f70f037750cfeda7a08ee294baca225a88c32)), closes [#22](https://github.com/[secure]/nfse-br/issues/22)
+
+
+### BREAKING CHANGES
+
+* the package is now nfse-br, and the bundled XSD moved
+from docs/schemas* to schemas/. validateAgainstSchema defaults to
+schemas/giss/prestados.
+
+* ci: run the test suite before publishing a release
+
+* ci: run the tests as their own job on Node 22 and 24
+
+* ci: test once, on the lowest supported Node
+* Node 20 is no longer supported (end of life in April
+2026). engines now requires Node 22 or later.
+
+* fix(nfsc): drop the supplier Contato group when there is no phone
+
+* refactor(giss): make the SOAP transport injectable
+
+* test(giss): cover issuing, signatures, parsing, storage and the CLI
+
+* fix(nfsc): refuse a supplier contact without a phone
+
+* feat(nacional): show keys, parties and events in the document list
+
+* feat(nacional): render the DANFSe locally, per NT 008
+
+* fix(messages): decode numeric character references
+
+* feat(nacional): match the DANFSe printed by the Emissor Nacional
+
+* chore(deps): update xml-crypto and audit runtime dependencies
+
+* fix(nacional): match the DANFSe from the public consultation
+
+* feat(nacional): embed DANFSe fonts and render from a saved XML
+
+* fix(nacional): follow what the live SEFIN accepts for ME/EPP
+
+Confirmed by issuing in production (Suzano, Simples, ISS not withheld):
+- totTrib: send pTotTribSN, never indTotTrib (E0712)
+- PIS/COFINS: send the profile CST; leave tpRetPisCofins 0 blank
+- restricted environment: finNFSe in infDPS and cNBS before xDescServ,
+  per the 2026-10-20 schemas (schemas/nacional-restrita)
+
+* docs(nacional): record what the live service taught us
+
+- E0039 does not apply to ME/EPP apportioning through the Simples with
+  competence on or after 2026-11-01 (RN 239); the ADN flag is not the criterion
+- no ISS rate in the DPS without withholding (RN 657), no IBSCBS before 2027
+- numbering, nDPS, the 01.09.02 code, and the restricted-environment layout
+- print the Simples deadline warning on stderr so --xml stays pipeable
+
+* docs: lead with the national issuer, GissOnline as legacy for Simples
+
+* feat(cli)!: pick the national issuer for Simples optants
+
+With NFSE_EMISSOR and --issuer unset, issue/replace use the national issuer
+for an optant of the Simples Nacional from 2026-11-01, and cancel --key
+always does. Anyone else stays on GissOnline. Setting either option wins.
+* a Simples optant who relied on the GissOnline default must
+now pass --issuer giss (or NFSE_EMISSOR=giss).
+
+* test(cli): cover the automatic issuer, cancel by key and 01.09.02
+
+Also fix the gotchas and the CLI doc that still said the city flag decides.
+
+* feat(cli)!: make the national issuer the default for issue
+
+issue goes national when NFSE_EMISSOR and --issuer are unset; cancel follows
+its argument (--key national, --number GissOnline). A city that has not
+adopted the national issuer answers E0039 and the CLI points to --issuer giss.
+* issue no longer defaults to GissOnline; pass --issuer giss
+or set NFSE_EMISSOR=giss.
+
+* fix(storage): use the taker's city as the IBS/CBS incidence location
+
+With cIndOp 100301 the portal requires the taker's municipality (E160), not the provider's.
+
+* docs: describe the national issuer first in the package description
+
 # [1.9.0](https://github.com/[secure]/gissonline-nfse/compare/v1.8.0...v1.9.0) (2026-10-02)
 
 
