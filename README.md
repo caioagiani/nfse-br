@@ -106,47 +106,38 @@ nfse pdf --number 573                     # the invoice as a file
 ```
 
 ```ts
-import { NfseClient, PortalService } from "nfse-br";
+import { NfseClient } from "nfse-br";
 
-// `national` is the main issuer (Sistema Nacional NFS-e); `nfse` and `nfsc` are
-// the legacy GissOnline Web Services. `config` and `certificate` come resolved.
-// Destructuring a service is safe — destructuring a method is not.
 const client = new NfseClient({
   // The fiscal profile lives in the client; each invoice only brings what varies.
-  profile: {
-    serviceListItem: "01.09.02",
-    cnaeCode: "6319400",
-    nbsCode: "117031000",
-  },
+  profile: { serviceListItem: "01.09.02", cnaeCode: "6319400", nbsCode: "117031000" },
 });
-const { nfse, config, certificate } = client;
 
 const invoice = {
   number: 5, // the DPS number: reusing it never issues twice
-  taker,
   serviceAmount: 550,
   description: "Recarga de conta",
+  taker: {
+    cnpj: "10966296000153",
+    legalName: "L.A. MOTORS LTDA",
+    address: {
+      street: "Rua das Flores",
+      number: "100",
+      district: "Centro",
+      cityCode: "3552502",
+      state: "SP",
+      zipCode: "08600000",
+    },
+  },
 };
 
-client.previewIssue(invoice); // signed DPS, nothing sent
-const { nfse: issued } = await client.issue(invoice);
-await client.cancel(issued.accessKey, 1, "Erro na emissao do servico");
-
-// GissOnline (legacy, only where the city still serves you): queries and its documents.
-const { invoices } = await nfse.queryProvidedServices({
-  issuePeriod: { from: "2026-07-01", to: "2026-07-31" },
-});
-
-// CodigoTributacaoMunicipio and its LC 116 item, from the city's own table.
-// This route is public — no login, no certificate:
-const activities = await PortalService.listActivities(config.cityCode);
-// [{ code: "6319400", serviceListItem: "1.09", description: "Portais…", rate: 4 }, …]
-
-// Anything company-specific needs a session. The A1 that signs the RPS opens
-// the portal too, so no CPF and password are required:
-const portal = await PortalService.authenticate({ certificate, cityCode: config.cityCode });
-const mine = await portal.companyActivities();   // rate valid today, by default
+client.previewIssue(invoice); // the signed DPS, nothing sent
+const { nfse } = await client.issue(invoice);
+await client.cancel(nfse.accessKey, 1, "Erro na emissao do servico");
 ```
+
+GissOnline queries, the portal directory and the documents it serves are in
+[docs/library.md](docs/library.md).
 
 Nothing that writes fires without `--confirm`.
 
