@@ -638,7 +638,8 @@ const SIMPLES_NATIONAL_DEADLINE = "2026-11-01";
 function warnSimplesDeadline(rps: Rps): void {
   if (rps.simplesNacionalOptant !== 1) return;
   if (isoDate(new Date()) < SIMPLES_NATIONAL_DEADLINE) return;
-  console.log(
+  // stderr: o aviso não pode entrar na saída de `--xml`/`--json`, que é para pipe
+  console.error(
     `⚠ Simples Nacional issues through the national system since ${SIMPLES_NATIONAL_DEADLINE} ` +
       "(Res. CGSN 191/2026). Set NFSE_EMISSOR=nacional — see docs/national.md.\n",
   );
@@ -679,7 +680,9 @@ async function runNationalCommand(
       if (values.json) console.log(JSON.stringify(agreement.raw, null, 2));
       if (!agreement.usesNationalIssuer) {
         console.log(
-          "\nThe city has not enabled the national issuer yet: any DPS is refused with E0039.",
+          "\nThe city has not enabled the national issuer in the ADN: a DPS is refused with E0039 —\n" +
+            "except for ME/EPP who apportion through the Simples (regApTribSN = 1) with competence on or\n" +
+            "after 2026-11-01 (RN 239), which issues anyway. See docs/national.md.",
         );
       }
       return true;
