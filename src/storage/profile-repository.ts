@@ -194,7 +194,14 @@ export function buildRps(base: IssuingProfile, input: IssueInput): Rps {
         pisCofins: profile.pisCofins,
         approximateTaxes: profile.approximateTaxes,
         ibsCbs: profile.ibsCbs
-          ? { ...profile.ibsCbs, taxableAmount: input.serviceAmount }
+          ? {
+              ...profile.ibsCbs,
+              // IBS/CBS segue o destino (LC 214, art. 11): com cIndOp 100301
+              // o portal exige o município do tomador (E160), não o do prestador.
+              incidenceLocationCode:
+                input.taker.address?.cityCode ?? profile.ibsCbs.incidenceLocationCode,
+              taxableAmount: input.serviceAmount,
+            }
           : undefined,
       },
       issWithheld: profile.issWithheld,
