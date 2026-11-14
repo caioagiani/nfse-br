@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type {
   ApproximateTaxes,
+  ForeignTrade,
   IbsCbs,
   PisCofins,
   Rps,
@@ -138,6 +139,8 @@ export interface IssueInput {
   unconditionalDiscount?: number;
   conditionalDiscount?: number;
   additionalInformation?: string;
+  /** Exportação/importação de serviço: o grupo `comExt` (tomador no exterior, exportação) */
+  foreignTrade?: ForeignTrade;
   /** Sobrescreve campos do perfil nesta emissão */
   profile?: Partial<IssuingProfile>;
 }
@@ -214,6 +217,7 @@ export function buildRps(base: IssuingProfile, input: IssueInput): Rps {
       countryCode: profile.countryCode,
       issTaxability: profile.issTaxability,
       incidenceCityCode: profile.incidenceCityCode,
+      foreignTrade: input.foreignTrade,
     },
     taker: input.taker,
     specialTaxRegime: profile.specialTaxRegime,

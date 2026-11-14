@@ -183,3 +183,38 @@ describe("NfseClient — issueMany", () => {
     assert.deepEqual((await c.issueMany(list)).map((r) => r.status), ["already-issued", "issued"]);
   });
 });
+
+describe("NfseClient — exportação de serviço", () => {
+  it("previewIssue monta o tomador estrangeiro e o comExt", () => {
+    const xml = client({ issTaxability: 4 }).previewIssue(
+      invoice({
+        taker: {
+          nif: "98-7654321",
+          legalName: "Acme Inc",
+          foreignAddress: {
+            countryCode: "0840",
+            countryIso: "US",
+            fullAddress: "100 Main St",
+            postalCode: "10001",
+            city: "New York",
+            region: "NY",
+          },
+        } as never,
+        foreignTrade: {
+          serviceMode: "1",
+          relationship: "0",
+          currency: "220",
+          foreignAmount: 100,
+          providerSupport: "01",
+          takerSupport: "01",
+          temporaryGoods: "1",
+          shareWithMdic: "0",
+        },
+      }),
+    );
+    assert.match(xml, /<NIF>98-7654321<\/NIF>/);
+    assert.match(xml, /<cPais>US<\/cPais>/);
+    assert.match(xml, /<comExt><mdPrestacao>1<\/mdPrestacao>/);
+    assert.match(xml, /<tribISSQN>3<\/tribISSQN>/);
+  });
+});

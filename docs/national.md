@@ -144,6 +144,44 @@ nfse issue-batch --file notas.json --confirm --concurrency 4 --per-second 5
 Progress goes to stderr and the final table (or `--json`) to stdout; the exit code is 1 if
 any invoice was not issued.
 
+## Exporting a service: foreign taker and `comExt`
+
+The national DPS carries a taker abroad (`NIF` and `endExt`) and the `comExt` group
+(LC 214/2025). The XML is validated against the bundled `DPS_v1.01.xsd` in the tests, but it
+has **not** been accepted by the live SEFIN yet: confirm with a first real issue, ideally
+the one you need, and compare with an XML the Emissor Nacional web produced.
+
+```ts
+await client.issue({
+  number: 12,
+  serviceAmount: 5000,                       // in reais
+  description: "Software development",
+  profile: { issTaxability: 4 },             // 4 = exportação → tribISSQN 3
+  taker: {
+    nif: "98-7654321",
+    legalName: "Acme Inc",
+    foreignAddress: {
+      countryCode: "0840",                   // 4 digits, only the GissOnline uses it
+      countryIso: "US",                      // the national DPS wants ISO alpha-2
+      fullAddress: "100 Main St, Suite 4",
+      postalCode: "10001",
+      city: "New York",
+      region: "NY",
+      // number and district are required by the XSD: they default to "S/N" and the city
+    },
+  },
+  foreignTrade: {
+    serviceMode: "1", relationship: "0", currency: "220", foreignAmount: 1000,
+    providerSupport: "01", takerSupport: "01", temporaryGoods: "1", shareWithMdic: "0",
+  },
+});
+```
+
+The builder refuses early, with a `ValidationError`, a foreign taker that has a CNPJ/CPF or a
+Brazilian `address`, one without `nif` (or `nifAbsentReason`: 0, 1 or 2), one without
+`foreignAddress`, and one without `countryIso`. The catalog says the SEFIN refuses
+`cNaoNIF = 0` for the provider (E0115); check whether it also does for the taker.
+
 ## DANFSe (the PDF)
 
 The national API no longer renders it. Technical Note 008 (v1.02, 2026-07-14) suspended
