@@ -3,7 +3,8 @@
 Node/TypeScript client and CLI for Brazilian service invoices (NFS-e) through the
 **Sistema Nacional NFS-e** (SEFIN + ADN) — the issuer for the **Simples Nacional** since
 2026-11-01 (Res. CGSN 191/2026). One A1 certificate, one command line.
-Formerly `gissonline-nfse`; the `giss` command and `GissClient` still work as aliases.
+Formerly `gissonline-nfse` (see [docs/migration.md](docs/migration.md)); the `giss` command
+and `GissClient` still work as aliases.
 
 - Issue and cancel invoices, signed in SHA-256 over mutual TLS
 - Query by access key or DPS, and the distribution of every invoice where your CNPJ appears

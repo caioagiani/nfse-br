@@ -62,6 +62,10 @@ export const responses = {
     messages("MensagemAlertaRetorno", warnings) +
     `</ConsultarLoteRpsResposta>`,
 
+  /** Lote recusado (situação 3): as mensagens vêm em MensagemRetorno, dentro de ListaMensagemRetornoLote. */
+  rejectedBatch: (list: ServiceMessage[]) =>
+    `<ConsultarLoteRpsResposta ${NS}><Situacao>3</Situacao><ListaMensagemRetornoLote>${messages("MensagemRetorno", list).replace(/^<ListaMensagemRetorno>|<\/ListaMensagemRetorno>$/g, "")}</ListaMensagemRetornoLote></ConsultarLoteRpsResposta>`,
+
   query: (root: string, invoices: InvoiceFixture[], page?: string) =>
     `<${root} ${NS}><ListaNfse>${invoices.map(compNfse).join("")}${page ? `<Pagina>${page}</Pagina>` : ""}</ListaNfse></${root}>`,
 

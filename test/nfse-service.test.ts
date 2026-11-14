@@ -101,6 +101,43 @@ describe("NfseService.issueRps — emissão idempotente", () => {
     assert.deepEqual(outcome.warnings, [{ code: "E163", message: "Alíquota ausente", correction: undefined }]);
   });
 
+  it("lote recusado que chega como erro: rejected, com as mensagens (não se perdem na exceção)", async () => {
+    const { nfse, of } = service({
+      ConsultarNfsePorRps: () => NOT_FOUND,
+      RecepcionarLoteRps: () => responses.protocol("P-5"),
+      ConsultarLoteRps: () => responses.rejectedBatch([{ code: "E163", message: "Alíquota ausente" }]),
+    });
+    const outcome = await nfse.issueRps(withRps(), fast);
+    assert.equal(outcome.status, "rejected");
+    assert.equal(outcome.protocol, "P-5");
+    assert.equal(outcome.warnings[0]?.code, "E163");
+    assert.equal(of("ConsultarLoteRps").length, 1, "não fica esperando um lote já recusado");
+  });
+
+  it("A02 (consulta concorrente) não vale como RPS inexistente", async () => {
+    const { nfse } = service({
+      ConsultarNfsePorRps: () =>
+        responses.errors("ConsultarNfseRpsResposta", [{ code: "A02", message: "Consulta concorrente" }]),
+    });
+    await assert.rejects(nfse.findByRps(rpsNumber), GissError);
+    assert.equal(await service({ ConsultarNfsePorRps: () => NOT_FOUND }).nfse.findByRps(rpsNumber), undefined);
+  });
+
+  it("A02 na consulta final: o protocolo não se perde (pending)", async () => {
+    let byRps = 0;
+    const { nfse } = service({
+      ConsultarNfsePorRps: () =>
+        ++byRps === 1
+          ? NOT_FOUND
+          : responses.errors("ConsultarNfseRpsResposta", [{ code: "A02", message: "Consulta concorrente" }]),
+      RecepcionarLoteRps: () => responses.protocol("P-6"),
+      ConsultarLoteRps: () => responses.batch("2"),
+    });
+    const outcome = await nfse.issueRps(withRps(), fast);
+    assert.equal(outcome.status, "pending");
+    assert.equal(outcome.protocol, "P-6");
+  });
+
   it("espera esgotada e nada encontrado: pending, com o protocolo para retomar", async () => {
     const { nfse, of } = service({
       ConsultarNfsePorRps: () => NOT_FOUND,

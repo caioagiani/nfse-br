@@ -69,6 +69,18 @@ interface PeriodFilter {
 }
 
 /** Operações do Web Service `nfse` — emissão e consulta de serviços prestados. */
+/** A02: há outra consulta em curso para o mesmo contribuinte — a resposta não diz nada sobre a nota. */
+const CONCURRENT_QUERY = "A02";
+
+/** A situação do lote no XML de resposta, ou `undefined` se não for uma resposta de lote. */
+function batchStatus(xml: string): string | undefined {
+  try {
+    return parseBatchResult(xml).status || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export class NfseService {
   readonly #options: NfseServiceOptions;
 
@@ -185,9 +197,17 @@ export class NfseService {
       let result: BatchResult | undefined;
       try {
         result = await this.queryRpsBatch(batch.protocol!);
-      } catch {
-        // o protocolo costuma responder erro enquanto o lote não foi lido;
-        // a consulta por RPS abaixo é quem dá a palavra final
+      } catch (error) {
+        // O protocolo costuma responder erro enquanto o lote não foi lido; isso segue
+        // na espera. Lote recusado (situação 3) também chega como erro — o serviço
+        // lança antes do parse — e é a situação no XML que o distingue: sem ela, as
+        // mensagens iam embora com a exceção.
+        if (error instanceof GissError && batchStatus(error.xml) === "3") {
+          const issued = await this.findByRps(query).catch(() => undefined);
+          return issued
+            ? { status: "issued", invoice: issued, protocol: batch.protocol, warnings: [] }
+            : { status: "rejected", protocol: batch.protocol, warnings: error.messages };
+        }
       }
 
       const invoice = result?.invoices[0];
@@ -210,7 +230,7 @@ export class NfseService {
 
     // A espera esgotou, o que não quer dizer que a nota não saiu: o
     // processamento pode ter terminado depois. Quem decide é o RPS.
-    const late = await this.findByRps(query);
+    const late = await this.findByRps(query).catch(() => undefined);
     return late
       ? { status: "issued", invoice: late, protocol: batch.protocol, warnings: [] }
       : { status: "pending", protocol: batch.protocol, warnings: [] };
@@ -230,7 +250,11 @@ export class NfseService {
       const { invoices } = await this.queryNfseByRps(args);
       return invoices[0];
     } catch (error) {
-      if (error instanceof GissError) return undefined;
+      // O serviço responde erro quando não acha o RPS, e o código varia (E4, E91…).
+      // A02 é a exceção: consulta concorrente não diz nada sobre a nota, e tratá-la
+      // como inexistente levaria a reenviar um RPS que pode já ter virado nota.
+      const concurrent = error instanceof GissError && error.messages.some((m) => m.code === CONCURRENT_QUERY);
+      if (error instanceof GissError && !concurrent) return undefined;
       throw error;
     }
   }

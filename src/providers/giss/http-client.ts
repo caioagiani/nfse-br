@@ -3,17 +3,21 @@ import { classifyTransportError, timeoutError } from "../../infra/transport-erro
 
 const TIMEOUT_MS = 60_000;
 
+/** `RequestInit` com o tempo limite desta chamada, em ms (padrão 60 s). */
+export type PortalRequestInit = RequestInit & { timeoutMs?: number };
+
 /** `fetch` com tempo limite e falha de rede já classificada. */
-async function send(base: string, route: string, init: RequestInit, accept: string) {
+async function send(base: string, route: string, request: PortalRequestInit, accept: string) {
+  const { timeoutMs = TIMEOUT_MS, ...init } = request;
   try {
     return await fetch(new URL(route, base), {
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
       ...init,
       headers: { Accept: accept, ...init.headers },
     });
   } catch (error) {
     const timedOut = (error as { name?: string }).name === "TimeoutError";
-    throw classifyTransportError(timedOut ? timeoutError(TIMEOUT_MS) : error, {
+    throw classifyTransportError(timedOut ? timeoutError(timeoutMs) : error, {
       provider: "portal",
       operation: route,
       // Login é POST mas não altera nada; o resto que não é GET grava no portal.
@@ -26,7 +30,7 @@ async function send(base: string, route: string, init: RequestInit, accept: stri
 export async function requestJson<T>(
   base: string,
   route: string,
-  init: RequestInit,
+  init: PortalRequestInit,
 ): Promise<T> {
   const response = await send(base, route, init, "application/json");
 
@@ -52,7 +56,7 @@ export async function requestJson<T>(
 export async function requestBinary(
   base: string,
   route: string,
-  init: RequestInit,
+  init: PortalRequestInit,
   expected: string,
 ): Promise<Buffer> {
   const response = await send(base, route, init, expected);
