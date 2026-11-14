@@ -60,6 +60,8 @@ are `GissError` and `NationalError` (both expose `messages: { code, message,
 correction }[]`). The other service errors are `SoapFaultError`, `PortalError` and
 `LookupError`.
 
+For the national issuer, [national-errors.md](national-errors.md) has the map of rejection codes: the ones seen live, and the whole official catalog.
+
 ## Writes and retries
 
 Issuing and cancelling are the operations where a lost answer is dangerous. Both
