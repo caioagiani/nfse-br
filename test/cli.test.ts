@@ -199,3 +199,78 @@ describe("CLI — national-rates", () => {
     assert.match(run.stderr, /code: VALIDATION/);
   });
 });
+
+describe("CLI — comandos offline e validação de argumentos", () => {
+  const cli = resolve("src/cli/index.ts");
+  const cwd = mkdtempSync(join(tmpdir(), "nfse-cli-offline-"));
+  writeFileSync(join(cwd, "cert.pfx"), testPfx("segredo"));
+  const env = {
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(GISS_|CERT_|NFSE_)/.test(k))),
+    CERT_PATH: "cert.pfx",
+    CERT_PASSWORD: "segredo",
+    GISS_CNPJ: PROVIDER_CNPJ,
+    GISS_ISC_MUNICIPAL: "53624",
+  };
+  const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd, env, encoding: "utf8" });
+
+  it("cert mostra o titular, a validade e o prestador", () => {
+    const result = run("cert");
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Holder:\s+EMPRESA TESTE/);
+    assert.match(result.stdout, /Valid until:\s+2027-01-01/);
+    assert.match(result.stdout, new RegExp(`CNPJ ${PROVIDER_CNPJ} / IM 53624`));
+  });
+
+  it("cities filtra por estado", () => {
+    const result = run("cities", "--state", "SP");
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /guarulhos\s+3518800\s+Guarulhos\/SP/);
+    assert.doesNotMatch(result.stdout, /\/RJ/);
+  });
+
+  it("comando desconhecido sai com 1", () => {
+    const result = run("bogus");
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Unknown command: bogus/);
+  });
+
+  it("argumentos que faltam falham antes de qualquer chamada", () => {
+    assert.match(run("cancel", "--reason", "1").stderr, /Provide the invoice --number/);
+    assert.match(run("national-get").stderr, /Provide the 50-digit access --key/);
+    assert.match(run("danfse").stderr, /Usage: nfse danfse/);
+    for (const args of [["cancel", "--reason", "1"], ["national-get"], ["danfse"]]) {
+      assert.equal(run(...args).status, 1);
+    }
+  });
+
+  it("cliente e fornecedor: cadastra, lista e remove no diretório local", () => {
+    const add = run("customer-add", "--tax-id", "52.884.617/0001-10", "--name", "Cli Ltda", "--alias", "cli");
+    assert.equal(add.status, 0, add.stderr);
+    assert.match(add.stdout, /customer saved: Cli Ltda \(52884617000110\)/);
+    assert.match(add.stdout, /Warning: no address/);
+
+    assert.match(run("customers").stdout, /52884617000110\s+\|\s+Cli Ltda\s+\|\s+\(cli\)/);
+    assert.match(run("suppliers").stdout, /No supplier in the local directory/);
+
+    const supplier = run("supplier-add", "--tax-id", "60977243000106", "--name", "Forn SA");
+    assert.equal(supplier.status, 0, supplier.stderr);
+    assert.match(run("suppliers").stdout, /60977243000106/);
+
+    assert.match(run("customer-rm", "--tax-id", "52884617000110").stdout, /customer removed/);
+    assert.match(run("customers").stdout, /No customer in the local directory/);
+    assert.match(run("suppliers").stdout, /60977243000106/, "remover o cliente não toca o fornecedor");
+  });
+
+  it("issue com cliente fora do diretório não vira nota", () => {
+    const result = run("issue", "--issuer", "giss", "--customer", "ninguem", "--amount", "10", "--rate", "2");
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Customer "ninguem" is not in the local directory/);
+  });
+
+  it("profile imprime o perfil fiscal padrão", () => {
+    const profile = JSON.parse(run("profile").stdout);
+    assert.equal(profile.serviceListItem, "01.04");
+    assert.equal(profile.pisCofins.cst, "08");
+    assert.equal(profile.simplesNacionalOptant, 1);
+  });
+});
