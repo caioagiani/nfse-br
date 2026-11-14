@@ -86,6 +86,14 @@ Nothing to run by hand. Merging into `main` is the whole ritual:
 the last tag, decides the version, writes `CHANGELOG.md`, tags, opens the GitHub
 release and publishes to npm.
 
+### Pre-releases (`next`)
+
+New capabilities (`feat`) are developed against the `next` branch, not `main`. Each
+merge there publishes `X.Y.0-next.N` under the `next` dist-tag — try it with
+`npm i nfse-br@next`. When a phase is done, `next` is merged into `main` and
+releases **one** minor. Urgent `fix` and `docs` go straight to `main`, and `next`
+is brought up to date from `main` afterwards.
+
 This is why the commit type matters: it is the only input to the version. A `fix`
 labelled as `chore` never ships — and a release you did not intend is one
 `feat:` away, so think about the type before merging, not after.
