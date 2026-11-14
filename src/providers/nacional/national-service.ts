@@ -28,7 +28,7 @@ import {
   type NationalNfse,
   type SimplesOption,
 } from "./messages.ts";
-import { isoDate } from "../../infra/xml.ts";
+import { digitsOnly, isoDate } from "../../infra/xml.ts";
 import { danfseStatus } from "./danfse/danfse-data.ts";
 import { renderDanfse } from "./danfse/danfse-pdf.ts";
 
@@ -361,7 +361,10 @@ export class NationalService {
    * Lê a partir do NSU informado, em lotes de até 50.
    */
   async distribution(fromNsu = 0): Promise<DistributedDocument[]> {
-    const url = `${this.hosts.adn}/contribuintes/DFe/${fromNsu}?lote=true`;
+    // Sem `cnpjConsulta` o ADN de produção responde 400 REJEICAO (TipoConsulta
+    // "InscricaoCertificado", sem mensagem de erro) mesmo com certificado válido; com o CNPJ
+    // do próprio certificado a consulta funciona (TipoConsulta "CnpjBase").
+    const url = `${this.hosts.adn}/contribuintes/DFe/${fromNsu}?cnpjConsulta=${digitsOnly(this.options.cnpj)}&lote=true`;
     const response = await this.call(url);
     if (response.status === 404) return [];
     const body = this.unwrap<{
