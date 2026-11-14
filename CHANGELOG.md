@@ -1,3 +1,10 @@
+# [2.2.0](https://github.com/[secure]/nfse-br/compare/v2.1.0...v2.2.0) (2026-11-14)
+
+
+### Features
+
+* **giss:** onExchange, portal timeout and safer issue lookups ([#30](https://github.com/[secure]/nfse-br/issues/30)) ([812eb2c](https://github.com/[secure]/nfse-br/commit/812eb2cb6fce8e1d9c89f5cb50a73dc4b971567a))
+
 # [2.1.0](https://github.com/[secure]/nfse-br/compare/v2.0.1...v2.1.0) (2026-11-13)
 
 
