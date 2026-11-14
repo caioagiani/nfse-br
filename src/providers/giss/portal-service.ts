@@ -646,7 +646,7 @@ export class PortalService {
       requestBinary(
         this.base,
         `/service-relatorio/api/relatorio/${format}/${this.#session.clientId}/nota/${internalId}`,
-        { headers },
+        { headers, timeoutMs: this.#credentials.timeoutMs },
         `application/${format}`,
       ),
     );
