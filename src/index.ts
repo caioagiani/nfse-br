@@ -43,11 +43,13 @@ export type {
 } from "./infra/certificate.ts";
 export { createXmlSigner } from "./infra/xml-signer.ts";
 export type { SignatureAlgorithm } from "./infra/xml-signer.ts";
-export { SOAP_SERVICES } from "./providers/giss/soap-client.ts";
+export { SOAP_SERVICES, callSoap } from "./providers/giss/soap-client.ts";
 export type {
   NfscOperation,
   NfseOperation,
   SoapOperation,
+  SoapCallOptions,
+  SoapResponse,
   SoapService,
 } from "./providers/giss/soap-client.ts";
 

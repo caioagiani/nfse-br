@@ -143,6 +143,18 @@ interface ApiResponse<T> {
   codigoHTTP: number;
   conteudo: T;
   mensagem?: string;
+  sucesso?: boolean;
+}
+
+/**
+ * A lista de atividades de uma resposta. Resposta sem lista, ou com `sucesso: false`,
+ * é falha: uma lista vazia diria "nenhuma atividade habilitada" a quem consome.
+ */
+function activitiesOf(route: string, response: ApiResponse<RawActivity[]> | null): MunicipalActivity[] {
+  if (!response || response.sucesso === false || !Array.isArray(response.conteudo)) {
+    throw new PortalError(route, response?.codigoHTTP ?? 200, response);
+  }
+  return response.conteudo.map(toActivity);
 }
 
 /** Formatos em que o portal entrega uma nota emitida. */
@@ -595,10 +607,7 @@ export class PortalService {
       route,
       { headers: { APP_ID: appIdFor(cityCode, appId) }, timeoutMs },
     );
-    // Uma lista vazia seria indistinguível de "o município não tem atividades":
-    // resposta sem a lista é falha, e quem chama precisa saber.
-    if (!Array.isArray(response?.conteudo)) throw new PortalError(route, 200, response);
-    return response.conteudo.map(toActivity);
+    return activitiesOf(route, response);
   }
 
   /**
@@ -608,10 +617,8 @@ export class PortalService {
    */
   async companyActivities(on: Date | string = new Date()): Promise<MunicipalActivity[]> {
     const { clientId, companyId } = this.#session;
-    const response = await this.call<ApiResponse<RawActivity[]>>(
-      `/service-atividade/api/atividade/servicos/enquadrados/aliquotas/${clientId}/${companyId}/${isoDate(on)}`,
-    );
-    return (response.conteudo ?? []).map(toActivity);
+    const route = `/service-atividade/api/atividade/servicos/enquadrados/aliquotas/${clientId}/${companyId}/${isoDate(on)}`;
+    return activitiesOf(route, await this.call<ApiResponse<RawActivity[]>>(route));
   }
 
   /** Remove um cadastro (o portal chama de "anular"). */

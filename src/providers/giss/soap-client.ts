@@ -171,16 +171,20 @@ export function readSoapResponse(
   try {
     return { status, envelope, xml: extractOutputXml(envelope, operation) };
   } catch (error) {
-    if (status >= 500 && !/faultstring/.test(envelope)) {
-      throw new NfseError(`${operation} (giss): serviço indisponível, HTTP ${status}`, {
-        code: "UNAVAILABLE",
-        provider: "giss",
-        operation,
-        retryable: true,
-        cause: error,
-      });
-    }
-    throw error;
+    // O corpo bruto vai no erro: para auditoria e suporte, o retorno do fault vale
+    // tanto quanto o de uma resposta boa, e quem só vê a exceção não o teria.
+    const failure =
+      status >= 500 && !/faultstring/.test(envelope)
+        ? new NfseError(`${operation} (giss): serviço indisponível, HTTP ${status}`, {
+            code: "UNAVAILABLE",
+            provider: "giss",
+            operation,
+            retryable: true,
+            cause: error,
+          })
+        : error;
+    if (failure instanceof NfseError) Object.assign(failure.details, { status, envelope });
+    throw failure;
   }
 }
 
