@@ -1,3 +1,10 @@
+# [2.5.0-next.1](https://github.com/[secure]/nfse-br/compare/v2.4.1...v2.5.0-next.1) (2026-11-14)
+
+
+### Features
+
+* **nacional:** configurable SEFIN/ADN hosts, CLI tested end to end ([#42](https://github.com/[secure]/nfse-br/issues/42)) ([98cda12](https://github.com/[secure]/nfse-br/commit/98cda12cedfd86d7ac43cc99e264a25b7b0f64e0))
+
 ## [2.4.1](https://github.com/[secure]/nfse-br/compare/v2.4.0...v2.4.1) (2026-11-14)
 
 # [2.4.0](https://github.com/[secure]/nfse-br/compare/v2.3.0...v2.4.0) (2026-11-14)
