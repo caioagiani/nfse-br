@@ -8,13 +8,18 @@ and `GissClient` still work as aliases.
 
 - Issue and cancel invoices, signed in SHA-256 over mutual TLS
 - Query by access key or DPS, and the distribution of every invoice where your CNPJ appears
+- Many invoices at once with `issueMany` / `nfse issue-batch`: concurrency, rate limit, safe retries
+- Replace, manifest (taker/intermediary events) and list invoices issued against your CNPJ
+- Foreign taker and `comExt` (export of services) in the national DPS
+- A `CertificatePool` for services that issue for many companies
 - DANFSe rendered locally from the invoice XML (NT 008)
 - Validation against the official XSD before sending
 - Typed errors that say whether a retry is safe; see [docs/errors.md](docs/errors.md)
 - No write operation fires without `--confirm`
 
 The step by step, with what the live service accepts and refuses, is in
-[docs/national.md](docs/national.md). The other guides are in [docs/](docs/).
+[docs/national.md](docs/national.md). To plug it into a system with its own database, read
+[docs/integration.md](docs/integration.md). The other guides are in [docs/](docs/).
 
 > **GissOnline is legacy.** The Web Services of 32 cities (ABRASF 2.04) are still in the
 > client for reading what they hold and for taxpayers outside the Simples, but a Simples
