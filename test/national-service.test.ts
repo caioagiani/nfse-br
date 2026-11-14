@@ -4,7 +4,9 @@ import { describe, it } from "node:test";
 import { NationalError, NfseError, NotSupportedError, TransportError, ValidationError } from "../src/domain/errors.ts";
 import { packXml, unpackXml } from "../src/providers/nacional/national-client.ts";
 import { createXmlSigner } from "../src/infra/xml-signer.ts";
+import { buildManifestationEvent } from "../src/providers/nacional/messages.ts";
 import { NATIONAL_HOSTS, NationalService } from "../src/providers/nacional/national-service.ts";
+import { SCHEMA_DIRECTORIES, validateAgainstSchema } from "../src/validation/schema-validator.ts";
 import {
   fakeTransport,
   PROVIDER_CNPJ,
@@ -277,6 +279,70 @@ describe("NationalService.cancel", () => {
     const { national, calls } = service({});
     await assert.rejects(national.cancel(ACCESS_KEY, 1, "curta"), /15 a 255/);
     assert.equal(calls.length, 0);
+  });
+});
+
+describe("NationalService.manifest", () => {
+  const route = () => ({
+    [`${sefin}/nfse/${ACCESS_KEY}/eventos`]: () => ({ status: 201, json: { eventoXmlGZipB64: packXml("<evento/>") } }),
+  });
+
+  const cases: [string, "provider" | "taker" | "intermediary", "confirm" | "reject", number, string][] = [
+    ["confirmação do prestador", "provider", "confirm", 202201, "Confirmação do Prestador"],
+    ["confirmação do tomador", "taker", "confirm", 203202, "Confirmação do Tomador"],
+    ["confirmação do intermediário", "intermediary", "confirm", 204203, "Confirmação do Intermediário"],
+    ["rejeição do prestador", "provider", "reject", 202205, "Rejeição do Prestador"],
+    ["rejeição do tomador", "taker", "reject", 203206, "Rejeição do Tomador"],
+    ["rejeição do intermediário", "intermediary", "reject", 204207, "Rejeição do Intermediário"],
+  ];
+  for (const [name, role, action, code, who] of cases) {
+    it(`${name}: evento ${code}, assinado, no id e na descrição do XSD`, async () => {
+      const { national, calls } = service(route());
+      await national.manifest(ACCESS_KEY, {
+        role,
+        action,
+        ...(action === "reject" ? { reason: 3 as const, justification: "Fato gerador nao ocorreu" } : {}),
+      });
+      const request = unpackXml(posted(calls[0]!)["pedidoRegistroEventoXmlGZipB64"]!);
+      assert.match(request, new RegExp(`<infPedReg Id="PRE${ACCESS_KEY}${code}">`));
+      assert.match(request, new RegExp(`<e${code}><xDesc>Manifestação de NFS-e - ${who}</xDesc>`));
+      assert.match(request, new RegExp(`<Reference URI="#PRE${ACCESS_KEY}${code}">`));
+      assert.equal(/<cMotivo>3<\/cMotivo>/.test(request), action === "reject");
+    });
+  }
+
+  it("o XML de cada manifestação valida contra o XSD de eventos", () => {
+    for (const [, role, action] of cases) {
+      const { xml } = buildManifestationEvent({
+        environment: 1,
+        cnpj: PROVIDER_CNPJ,
+        accessKey: ACCESS_KEY,
+        role,
+        action,
+        ...(action === "reject" ? { reason: 9 as const, justification: "Outro motivo qualquer aqui" } : {}),
+      });
+      const result = validateAgainstSchema(xml, "pedRegEvento_v1.01.xsd", SCHEMA_DIRECTORIES.national);
+      if (result === null) return; // sem xmllint
+      assert.deepEqual(result.errors, [], `${role} ${action}`);
+    }
+  });
+
+  it("recusa antes de enviar: rejeição sem motivo, motivo na confirmação, justificativa curta", async () => {
+    const { national, calls } = service(route());
+    await assert.rejects(national.manifest(ACCESS_KEY, { role: "taker", action: "reject" }), /`reason`/);
+    await assert.rejects(national.manifest(ACCESS_KEY, { role: "taker", action: "confirm", reason: 1 }), /só valem na rejeição/);
+    await assert.rejects(
+      national.manifest(ACCESS_KEY, { role: "taker", action: "reject", reason: 1, justification: "curta" }),
+      /15 a 255/,
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("a recusa da SEFIN (ex.: não é o tomador da nota) vira NationalError", async () => {
+    const { national } = service({
+      [`${sefin}/nfse/${ACCESS_KEY}/eventos`]: () => ({ status: 400, json: { erro: [{ codigo: "E0001", descricao: "autor invalido" }] } }),
+    });
+    await assert.rejects(national.manifest(ACCESS_KEY, { role: "taker", action: "confirm" }), NationalError);
   });
 });
 

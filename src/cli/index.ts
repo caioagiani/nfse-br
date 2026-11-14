@@ -20,6 +20,7 @@ import type { Address, CancellationCode, Rps } from "../domain/types.ts";
 import { exportPem, type Certificate } from "../infra/certificate.ts";
 import { isoDate } from "../infra/xml.ts";
 import {
+  buildManifestationEvent,
   nfseNumberFromKey,
   parseNationalEvent,
   parseNationalNfse,
@@ -135,6 +136,8 @@ NATIONAL ISSUER (Sistema Nacional NFS-e — mandatory for Simples from 2026-11-0
   national-pdf --key K [--out DIR|FILE]             DANFSe (the national PDF)
   national-xml --key K [--out DIR|FILE]             Invoice XML
   national-docs [--from NSU]                        Invoices and events where your CNPJ appears
+  manifest --key K --as taker --action confirm|reject [--reason N --text T] [--confirm]
+                                                    Confirm or reject an invoice as provider, taker or intermediary
   issue-batch --file notas.json [--confirm] [--concurrency N] [--per-second N]
                                                     Issue many invoices from a JSON array (safe to repeat)
   national-rates --item 01.09.02.001 [--date D]     The city's ISS rate and special regimes for a service
@@ -178,6 +181,8 @@ const options = {
   export: { type: "boolean", default: false },
   out: { type: "string" },
   file: { type: "string" },
+  as: { type: "string" },
+  action: { type: "string" },
   concurrency: { type: "string" },
   "per-second": { type: "string" },
   customer: { type: "string" },
@@ -959,6 +964,33 @@ async function runNationalCommand(
         console.error("Repeat the same command: what was issued comes back as already-issued, only the rest is sent.");
         process.exitCode = 1;
       }
+      return true;
+    }
+
+    case "manifest": {
+      const roles = ["provider", "taker", "intermediary"] as const;
+      const role = roles.find((r) => r === values.as);
+      if (!role) throw new ValidationError("Provide --as provider|taker|intermediary: who you are on the invoice");
+      const action: "confirm" | "reject" | undefined =
+        values.action === "confirm" ? "confirm" : values.action === "reject" ? "reject" : undefined;
+      if (!action) throw new ValidationError("Provide --action confirm|reject");
+      const accessKey = key();
+      const reason = values.reason ? Number(values.reason) : undefined;
+      const options = {
+        role,
+        action,
+        reason: reason as 1 | 2 | 3 | 4 | 5 | 9 | undefined,
+        justification: values.text,
+      };
+      if (!values.confirm) {
+        buildManifestationEvent({ ...options, environment: national.environmentCode, cnpj: client.config.cnpj, accessKey });
+        console.log(`Would ${action} ${accessKey} as ${role}${reason ? `, reason ${reason}` : ""}. Nothing was sent.`);
+        console.log("Repeat with --confirm to register the event. The certificate's CNPJ must be that party on the invoice.");
+        return true;
+      }
+      const event = await national.manifest(accessKey, options);
+      console.log(`Event registered: ${action} as ${role}.`);
+      if (values.xml) console.log(event);
       return true;
     }
 

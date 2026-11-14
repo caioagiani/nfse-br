@@ -198,4 +198,31 @@ describe("CLI — comandos nacionais contra um servidor local", () => {
       assert.match(result.stderr, /--file/);
     });
   });
+
+  describe("manifest", () => {
+    const key = "3".repeat(50);
+    it("sem --confirm só descreve e não envia nada", async () => {
+      seen.length = 0;
+      const result = await run("manifest", "--key", key, "--as", "taker", "--action", "confirm");
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /Would confirm .* as taker/);
+      assert.equal(seen.length, 0);
+    });
+
+    it("com --confirm registra o evento no endpoint da nota", async () => {
+      handler = (url, method) =>
+        method === "POST" && url === `/sefin/nfse/${key}/eventos`
+          ? { status: 201, json: { eventoXmlGZipB64: packXml("<evento/>") } }
+          : undefined;
+      const result = await run("manifest", "--key", key, "--as", "taker", "--action", "reject", "--reason", "3", "--text", "Fato gerador nao ocorreu", "--confirm");
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /Event registered: reject as taker/);
+    });
+
+    it("exige quem é você, a ação e, na rejeição, o motivo", async () => {
+      assert.match((await run("manifest", "--key", key)).stderr, /--as provider\|taker\|intermediary/);
+      assert.match((await run("manifest", "--key", key, "--as", "taker")).stderr, /--action confirm\|reject/);
+      assert.match((await run("manifest", "--key", key, "--as", "taker", "--action", "reject")).stderr, /`reason`/);
+    });
+  });
 });

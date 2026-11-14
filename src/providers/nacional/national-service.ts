@@ -18,10 +18,12 @@ import {
 import {
   buildCancellationEvent,
   buildDps,
+  buildManifestationEvent,
   dpsId,
   parseNationalEvent,
   parseNationalNfse,
   type DpsContext,
+  type ManifestationInput,
   type NationalEvent,
   type NationalCancellationReason,
   type NationalEnvironment,
@@ -352,9 +354,31 @@ export class NationalService {
       reason,
       justification,
     });
+    return this.registerEvent(accessKey, 101101, event);
+  }
+
+  /**
+   * Manifesta-se sobre uma nota: confirma ou rejeita, como prestador, tomador ou
+   * intermediário. O CNPJ do certificado precisa ser o dessa parte na nota; a SEFIN
+   * recusa o resto. Devolve o XML do evento registrado.
+   */
+  async manifest(
+    accessKey: string,
+    options: Omit<ManifestationInput, "environment" | "cnpj" | "accessKey">,
+  ): Promise<string> {
+    const { xml, eventCode } = buildManifestationEvent({
+      ...options,
+      environment: this.environmentCode,
+      cnpj: this.options.cnpj,
+      accessKey,
+    });
+    return this.registerEvent(accessKey, eventCode, xml);
+  }
+
+  private async registerEvent(accessKey: string, eventCode: number, event: string): Promise<string> {
     const signed = this.options.signer.sign(event, {
       referenceXPath: "//*[local-name(.)='infPedReg']",
-      id: `PRE${accessKey}101101`,
+      id: `PRE${accessKey}${eventCode}`,
       targetXPath: "/*",
     });
     this.log("pedRegEvento", signed);

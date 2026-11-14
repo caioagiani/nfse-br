@@ -108,6 +108,8 @@ export type { DanfseData, DanfseStatus } from "./providers/nacional/danfse/danfs
 export type {
   DpsContext,
   NationalCancellationReason,
+  ManifestationRole,
+  RejectionReason,
   NationalEnvironment,
   NationalNfse,
   NationalEvent,
