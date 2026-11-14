@@ -1,5 +1,5 @@
 import { NotSupportedError, ValidationError } from "../../domain/errors.ts";
-import type { Address, Rps, ServiceTaker } from "../../domain/types.ts";
+import type { Address, ForeignAddress, ForeignTrade, Rps, ServiceTaker } from "../../domain/types.ts";
 import {
   amount,
   digitsOnly,
@@ -153,6 +153,7 @@ export function buildDps(rps: Rps, context: DpsContext): string {
                 ? [element("cNBS", service.nbsCode), element("xDescServ", service.description)]
                 : [element("xDescServ", service.description), element("cNBS", service.nbsCode)]),
             ]),
+            service.foreignTrade && foreignTradeGroup(service.foreignTrade),
             group("infoCompl", [element("xInfComp", rps.additionalInformation)]),
           ]),
           group("valores", [
@@ -214,8 +215,6 @@ export function buildDps(rps: Rps, context: DpsContext): string {
  */
 function assertSupported(rps: Rps): void {
   const missing = [
-    (rps.taker?.nif || rps.taker?.foreignAddress) && "tomador no exterior (NIF/endExt)",
-    rps.service.foreignTrade && "comércio exterior (comExt)",
     rps.intermediary && "intermediário",
     rps.construction && "obra",
     rps.replacedRps && "substituição de nota",
@@ -233,13 +232,73 @@ function positive(value: number | undefined): string | undefined {
 }
 
 function takerGroup(taker: ServiceTaker): string {
+  const abroad = Boolean(taker.nif || taker.foreignAddress || taker.nifAbsentReason !== undefined);
+  if (abroad) assertForeignTaker(taker);
   return group("toma", [
     element("CNPJ", taker.cnpj && digitsOnly(taker.cnpj)),
     element("CPF", !taker.cnpj && taker.cpf ? digitsOnly(taker.cpf) : undefined),
+    element("NIF", !taker.cnpj && !taker.cpf ? taker.nif : undefined),
+    element(
+      "cNaoNIF",
+      !taker.cnpj && !taker.cpf && !taker.nif ? taker.nifAbsentReason : undefined,
+    ),
     element("xNome", taker.legalName),
     taker.address && addressGroup(taker.address),
+    taker.foreignAddress && foreignAddressGroup(taker.foreignAddress),
     element("fone", taker.contact?.phone && digitsOnly(taker.contact.phone)),
     element("email", taker.contact?.email),
+  ]);
+}
+
+/**
+ * Tomador no exterior: o XSD pede o NIF ou o motivo de não tê-lo (`cNaoNIF`), e o
+ * país no padrão ISO de 2 letras — o código de 4 dígitos do ABRASF não serve aqui.
+ */
+function assertForeignTaker(taker: ServiceTaker): void {
+  const fail = (message: string): never => {
+    throw new ValidationError(message, { provider: "nacional", details: { taker: taker.legalName } });
+  };
+  if (taker.cnpj || taker.cpf) fail("Tomador no exterior não tem CNPJ nem CPF: informe o NIF e o endereço no exterior");
+  if (taker.address) fail("Tomador no exterior usa `foreignAddress`, não `address`");
+  if (!taker.nif && taker.nifAbsentReason === undefined) {
+    fail("Tomador no exterior precisa do `nif` ou do motivo de não tê-lo (`nifAbsentReason`: 0, 1 ou 2)");
+  }
+  const foreign = taker.foreignAddress;
+  if (!foreign) return fail("Tomador no exterior precisa do `foreignAddress`");
+  if (!/^[A-Z]{2}$/.test(foreign.countryIso ?? "")) {
+    fail("O emissor nacional pede o país no formato ISO de 2 letras: informe `foreignAddress.countryIso` (ex.: \"US\")");
+  }
+}
+
+function foreignAddressGroup(address: ForeignAddress): string {
+  return group("end", [
+    group("endExt", [
+      element("cPais", address.countryIso),
+      element("cEndPost", address.postalCode),
+      element("xCidade", address.city),
+      element("xEstProvReg", address.region),
+    ]),
+    // O XSD exige logradouro, número e bairro; o endereço do exterior vem numa linha só,
+    // então o número e o bairro têm substitutos quando o chamador não os separa.
+    element("xLgr", address.fullAddress),
+    element("nro", address.number ?? "S/N"),
+    element("xBairro", address.district ?? address.city),
+  ]);
+}
+
+/** Grupo `comExt`: exportação ou importação de serviço (LC 214/2025). */
+function foreignTradeGroup(trade: ForeignTrade): string {
+  return group("comExt", [
+    element("mdPrestacao", trade.serviceMode),
+    element("vincPrest", trade.relationship),
+    element("tpMoeda", trade.currency),
+    element("vServMoeda", amount(trade.foreignAmount)),
+    element("mecAFComexP", trade.providerSupport),
+    element("mecAFComexT", trade.takerSupport),
+    element("movTempBens", trade.temporaryGoods),
+    element("nDI", trade.importDeclaration),
+    element("nRE", trade.exportRegistration),
+    element("mdic", trade.shareWithMdic),
   ]);
 }
 

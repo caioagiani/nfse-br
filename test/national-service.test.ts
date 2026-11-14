@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { NationalError, NfseError, NotSupportedError, TransportError } from "../src/domain/errors.ts";
+import { NationalError, NfseError, NotSupportedError, TransportError, ValidationError } from "../src/domain/errors.ts";
 import { packXml, unpackXml } from "../src/providers/nacional/national-client.ts";
 import { createXmlSigner } from "../src/infra/xml-signer.ts";
 import { NATIONAL_HOSTS, NationalService } from "../src/providers/nacional/national-service.ts";
@@ -388,8 +388,11 @@ describe("NationalService.issue — falhas no envio", () => {
 
   it("recursos ainda não montados falham antes de qualquer envio", async () => {
     const { national, calls } = service({});
+    const works = { ...sampleRps(), construction: { workCode: "1" } };
+    await assert.rejects(national.issue(works, issueOptions), NotSupportedError);
+    // tomador no exterior incompleto também não chega ao envio
     const foreign = sampleRps({ taker: { nif: "123", legalName: "Acme Inc." } });
-    await assert.rejects(national.issue(foreign, issueOptions), NotSupportedError);
+    await assert.rejects(national.issue(foreign, issueOptions), ValidationError);
     assert.equal(calls.length, 0);
   });
 });

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { NotSupportedError, ValidationError } from "../src/domain/errors.ts";
+import type { ForeignTrade } from "../src/domain/types.ts";
+import { SCHEMA_DIRECTORIES, validateAgainstSchema } from "../src/validation/schema-validator.ts";
 import {
   nfseNumberFromKey,
   parseNationalEvent,
@@ -279,35 +281,12 @@ describe("parseNationalNfse", () => {
 });
 
 describe("buildDps — o que ainda não é suportado", () => {
-  const unsupported: [string, Parameters<typeof sampleRps>[0], RegExp][] = [
-    ["tomador com NIF", { taker: { nif: "123", legalName: "Acme" } }, /tomador no exterior/],
-    [
-      "tomador com endereço no exterior",
-      {
-        taker: {
-          legalName: "Acme",
-          foreignAddress: { countryCode: "0840", fullAddress: "100 Main St" },
-        } as never,
-      },
-      /tomador no exterior/,
-    ],
-  ];
-  for (const [name, input, pattern] of unsupported) {
-    it(`${name}: NotSupportedError`, () => {
-      assert.throws(
-        () => buildDps(sampleRps(input), context),
-        (error: unknown) => error instanceof NotSupportedError && pattern.test(error.message),
-      );
-    });
-  }
-
-  it("intermediário, obra, substituição e comExt também", () => {
+  it("intermediário, obra e substituição", () => {
     const base = sampleRps();
     const cases = [
       { ...base, intermediary: { legalName: "X", cnpj: "1", cityCode: SUZANO } },
       { ...base, construction: { workCode: "1" } },
       { ...base, replacedRps: { number: 1, series: "A" } },
-      { ...base, service: { ...base.service, foreignTrade: {} as never } },
     ];
     for (const rps of cases) {
       assert.throws(() => buildDps(rps, context), NotSupportedError);
@@ -315,9 +294,9 @@ describe("buildDps — o que ainda não é suportado", () => {
   });
 
   it("lista tudo o que falta de uma vez", () => {
-    const base = sampleRps({ taker: { nif: "1", legalName: "Acme" } });
+    const base = sampleRps();
     assert.throws(
-      () => buildDps({ ...base, construction: { workCode: "1" } }, context),
+      () => buildDps({ ...base, construction: { workCode: "1" }, replacedRps: { number: 1, series: "A" } }, context),
       (error: unknown) =>
         error instanceof NotSupportedError &&
         Array.isArray(error.details["unsupported"]) &&
@@ -358,4 +337,92 @@ describe("eventos distribuídos pelo ADN", () => {
     assert.equal(nfseNumberFromKey(replacement), "530");
     assert.equal(nfseNumberFromKey("123"), undefined);
   });
+});
+
+describe("buildDps — tomador no exterior e comExt", () => {
+  const trade: ForeignTrade = {
+    serviceMode: "1",
+    relationship: "0",
+    currency: "220",
+    foreignAmount: 1000,
+    providerSupport: "01",
+    takerSupport: "01",
+    temporaryGoods: "1",
+    exportRegistration: "123456789012",
+    shareWithMdic: "0",
+  };
+  const abroad = {
+    nif: "98-7654321",
+    legalName: "Acme Inc",
+    foreignAddress: {
+      countryCode: "0840",
+      countryIso: "US",
+      fullAddress: "100 Main St, Suite 4",
+      postalCode: "10001",
+      city: "New York",
+      region: "NY",
+    },
+  };
+  const exported = () => {
+    const base = sampleRps({ taker: abroad });
+    return { ...base, service: { ...base.service, issTaxability: 4, foreignTrade: trade } };
+  };
+
+  it("monta o comExt na ordem do XSD, depois do cServ", () => {
+    const xml = buildDps(exported(), context);
+    assert.match(
+      xml,
+      /<\/cServ><comExt><mdPrestacao>1<\/mdPrestacao><vincPrest>0<\/vincPrest><tpMoeda>220<\/tpMoeda><vServMoeda>1000\.00<\/vServMoeda><mecAFComexP>01<\/mecAFComexP><mecAFComexT>01<\/mecAFComexT><movTempBens>1<\/movTempBens><nRE>123456789012<\/nRE><mdic>0<\/mdic><\/comExt><infoCompl>|<\/cServ><comExt>/,
+    );
+    assert.equal(tag(xml, "nDI"), undefined);
+    assert.equal(tag(xml, "tribISSQN"), "3", "exportação de serviço");
+  });
+
+  it("tomador estrangeiro leva NIF e endExt em ISO de 2 letras", () => {
+    const xml = buildDps(exported(), context);
+    assert.equal(tag(xml, "NIF"), "98-7654321");
+    assert.equal(tag(xml, "cPais"), "US");
+    assert.equal(tag(xml, "xCidade"), "New York");
+    assert.doesNotMatch(xml, /<CNPJ>(?!37969249000110)/);
+    assert.doesNotMatch(xml, /<endNac>/);
+  });
+
+  it("DPS completa valida contra o XSD nacional", () => {
+    const result = validateAgainstSchema(buildDps(exported(), { ...context, environment: 1 }), "DPS_v1.01.xsd", SCHEMA_DIRECTORIES.national);
+    if (result === null) return; // sem xmllint
+    assert.deepEqual(result.errors, []);
+  });
+
+  it("sem NIF, o motivo vai em cNaoNIF", () => {
+    const { nif, ...noNif } = abroad;
+    void nif;
+    const base = sampleRps({ taker: { ...noNif, nifAbsentReason: 1 } });
+    const xml = buildDps({ ...base, service: { ...base.service, issTaxability: 4, foreignTrade: trade } }, context);
+    assert.equal(tag(xml, "cNaoNIF"), "1");
+    assert.equal(tag(xml, "NIF"), undefined);
+  });
+
+  it("número e bairro do endereço têm substitutos e podem ser informados", () => {
+    const xml = buildDps(exported(), context);
+    assert.match(xml, /<xLgr>100 Main St, Suite 4<\/xLgr><nro>S\/N<\/nro><xBairro>New York<\/xBairro>/);
+    const base = sampleRps({ taker: { ...abroad, foreignAddress: { ...abroad.foreignAddress, number: "100", district: "Midtown" } } });
+    assert.match(buildDps(base, context), /<nro>100<\/nro><xBairro>Midtown<\/xBairro>/);
+  });
+
+  const invalid: [string, object, RegExp][] = [
+    ["sem o país em ISO", { foreignAddress: { ...abroad.foreignAddress, countryIso: undefined } }, /ISO de 2 letras/],
+    ["país em minúsculas", { foreignAddress: { ...abroad.foreignAddress, countryIso: "us" } }, /ISO de 2 letras/],
+    ["sem NIF e sem motivo", { nif: undefined }, /nif.*nifAbsentReason/],
+    ["com CNPJ", { cnpj: "37969249000110" }, /não tem CNPJ nem CPF/],
+    ["com endereço do Brasil", { address: { street: "R", number: "1", district: "B", cityCode: SUZANO, state: "SP", zipCode: "08600000" } }, /foreignAddress/],
+    ["só NIF, sem endereço", { foreignAddress: undefined }, /precisa do `foreignAddress`/],
+  ];
+  for (const [name, change, pattern] of invalid) {
+    it(`recusa tomador estrangeiro ${name}`, () => {
+      assert.throws(
+        () => buildDps(sampleRps({ taker: { ...abroad, ...change } as never }), context),
+        (error: unknown) => error instanceof ValidationError && pattern.test(error.message),
+      );
+    });
+  }
 });
