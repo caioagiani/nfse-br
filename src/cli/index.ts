@@ -14,6 +14,7 @@ import {
   NationalError,
   NfseError,
   type NfseErrorCode,
+  ValidationError,
 } from "../domain/errors.ts";
 import type { Address, CancellationCode, Rps } from "../domain/types.ts";
 import { exportPem, type Certificate } from "../infra/certificate.ts";
@@ -134,6 +135,7 @@ NATIONAL ISSUER (Sistema Nacional NFS-e — mandatory for Simples from 2026-11-0
   national-pdf --key K [--out DIR|FILE]             DANFSe (the national PDF)
   national-xml --key K [--out DIR|FILE]             Invoice XML
   national-docs [--from NSU]                        Invoices and events where your CNPJ appears
+  national-rates --item 01.09.02.001 [--date D]     The city's ISS rate and special regimes for a service
   danfse <nfse.xml> [--event FILE]... [--out DIR|FILE]  DANFSe from a saved XML (offline)
          [--status cancelled|replaced]              Watermark; otherwise taken from the events
   With NFSE_EMISSOR=nacional (or --issuer nacional), issue and cancel go
@@ -751,6 +753,26 @@ async function runNationalCommand(
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, file);
       console.log(`${target}  (${(file.length / 1024).toFixed(1)} KB)`);
+      return true;
+    }
+
+    case "national-rates": {
+      if (!values.item) throw new ValidationError("Informe o serviço com --item, ex.: --item 01.09.02.001");
+      const date = values.date ?? new Date();
+      const [rates, regimes] = await Promise.all([
+        national.serviceRates(values.item, date),
+        national.specialRegimes(values.item, date),
+      ]);
+      if (values.json) return void console.log(JSON.stringify({ rates, regimes }, null, 2)), true;
+      if (!rates) {
+        console.log(`The city has not parameterised ${values.item}: a DPS with it would be refused.`);
+        return true;
+      }
+      for (const r of rates) {
+        console.log(`ISS ${r.rate ?? "?"}% (incidence ${r.incidence ?? "?"}) since ${r.from.slice(0, 10)}${r.to ? ` until ${r.to.slice(0, 10)}` : ""}`);
+      }
+      for (const r of regimes ?? []) console.log(`Special regime ${r.status} since ${r.from.slice(0, 10)}${r.notes ? `: ${r.notes}` : ""}`);
+      console.log("\nThe Simples pays by the annex (DAS), not by this rate: it matters for withholding and for other regimes.");
       return true;
     }
 
