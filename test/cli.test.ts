@@ -267,6 +267,14 @@ describe("CLI — comandos offline e validação de argumentos", () => {
     assert.match(result.stderr, /Customer "ninguem" is not in the local directory/);
   });
 
+  it("emitir pelo GissOnline avisa que está depreciado, só em stderr", () => {
+    const giss = run("issue", "--issuer", "giss", "--customer", "ninguem", "--amount", "10", "--rate", "2");
+    assert.match(giss.stderr, /GissOnline is deprecated/);
+    assert.doesNotMatch(giss.stdout, /deprecated/);
+    // consulta não avisa
+    assert.doesNotMatch(run("cities").stderr, /deprecated/);
+  });
+
   it("profile imprime o perfil fiscal padrão", () => {
     const profile = JSON.parse(run("profile").stdout);
     assert.equal(profile.serviceListItem, "01.04");

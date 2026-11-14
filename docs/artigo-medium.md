@@ -5,6 +5,11 @@ acusando o fornecedor de um bug que era meu.*
 
 ---
 
+> **Nota (2026):** o GissOnline está depreciado — desde 01/11/2026 o Simples Nacional emite
+> só pelo Emissor Nacional. O texto segue como registro de depuração; veja `docs/national.md`.
+
+---
+
 Emitir nota fiscal de serviço por Web Service no Brasil é uma daquelas tarefas que
 parecem simples até você tentar. Cada município escolhe um provedor, cada provedor
 implementa o padrão ABRASF à sua maneira, e a documentação descreve um sistema
