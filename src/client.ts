@@ -253,6 +253,11 @@ export class NfseClient {
     return this.national.cancel(accessKey, reason, justification);
   }
 
+  /** Confirma ou rejeita uma nota como prestador, tomador ou intermediário (eventos de manifestação). */
+  manifest(accessKey: string, options: Parameters<NationalService["manifest"]>[1]) {
+    return this.national.manifest(accessKey, options);
+  }
+
   #compose({ number, series, ...input }: NationalInvoiceInput) {
     const profile = { ...this.#profile, ...input.profile };
     const optant = profile.simplesNacionalOptant === 1;

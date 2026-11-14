@@ -363,6 +363,86 @@ export function buildCancellationEvent(input: CancellationInput): string {
   });
 }
 
+export type ManifestationRole = "provider" | "taker" | "intermediary";
+
+/**
+ * Motivos de rejeição (`cMotivo`): 1 duplicidade, 2 já emitida pelo tomador, 3 não
+ * ocorrência do fato gerador, 4 responsabilidade tributária, 5 valor/serviço/data, 9 outros.
+ */
+export type RejectionReason = 1 | 2 | 3 | 4 | 5 | 9;
+
+/** Código do evento e `xDesc` que o XSD exige, por quem se manifesta. */
+const MANIFESTATION = {
+  provider: { confirm: [202201, "Confirmação do Prestador"], reject: [202205, "Rejeição do Prestador"] },
+  taker: { confirm: [203202, "Confirmação do Tomador"], reject: [203206, "Rejeição do Tomador"] },
+  intermediary: { confirm: [204203, "Confirmação do Intermediário"], reject: [204207, "Rejeição do Intermediário"] },
+} as const;
+
+export interface ManifestationInput {
+  environment: NationalEnvironment;
+  cnpj: string;
+  accessKey: string;
+  /** Quem se manifesta: o CNPJ do certificado precisa ser o dessa parte na nota */
+  role: ManifestationRole;
+  action: "confirm" | "reject";
+  /** Só na rejeição */
+  reason?: RejectionReason;
+  /** Só na rejeição, opcional: de 15 a 255 caracteres */
+  justification?: string;
+  eventDate?: Date;
+}
+
+/** Eventos de manifestação sobre uma NFS-e: confirmação ou rejeição pelo prestador, tomador ou intermediário. */
+export function buildManifestationEvent(input: ManifestationInput): {
+  xml: string;
+  eventCode: number;
+} {
+  const [eventCode, who] = MANIFESTATION[input.role][input.action];
+  const rejecting = input.action === "reject";
+  const justification = input.justification?.trim();
+
+  if (rejecting && ![1, 2, 3, 4, 5, 9].includes(input.reason as number)) {
+    throw new ValidationError("Rejeição precisa de `reason`: 1, 2, 3, 4, 5 ou 9", {
+      provider: "nacional",
+      details: { reason: input.reason },
+    });
+  }
+  if (!rejecting && (input.reason !== undefined || justification)) {
+    throw new ValidationError("`reason` e `justification` só valem na rejeição", { provider: "nacional" });
+  }
+  if (justification !== undefined && (justification.length < 15 || justification.length > 255)) {
+    throw new ValidationError("A justificativa da rejeição precisa ter de 15 a 255 caracteres", {
+      provider: "nacional",
+      details: { length: justification.length },
+    });
+  }
+
+  const xml = xmlDocument({
+    root: "pedRegEvento",
+    xmlns: NATIONAL_NAMESPACE,
+    attributes: { versao: NATIONAL_VERSION },
+    body: [
+      requiredGroup(
+        "infPedReg",
+        [
+          element("tpAmb", input.environment),
+          element("verAplic", APPLICATION),
+          element("dhEvento", brasiliaDateTime(input.eventDate)),
+          element("CNPJAutor", digitsOnly(input.cnpj)),
+          element("chNFSe", input.accessKey),
+          group(`e${eventCode}`, [
+            element("xDesc", `Manifestação de NFS-e - ${who}`),
+            element("cMotivo", rejecting ? input.reason : undefined),
+            element("xMotivo", rejecting ? justification : undefined),
+          ]),
+        ],
+        { Id: `PRE${input.accessKey}${eventCode}` },
+      ),
+    ],
+  });
+  return { xml, eventCode };
+}
+
 /** O essencial de uma NFS-e nacional, lido do XML devolvido pela SEFIN ou pelo ADN. */
 export interface NationalNfse {
   accessKey: string;

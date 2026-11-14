@@ -80,7 +80,18 @@ nfse danfse nfse.xml [--event FILE]... [--out DIR|FILE]   # offline, from a save
 nfse issue --issuer nacional --customer acme --amount 1500 --description "…"
 nfse issue --issuer nacional --customer acme --amount 1500 --description "…" --dps 7 --confirm
 nfse cancel --issuer nacional --key K --reason 1 --text "Valor informado errado" --confirm
+nfse manifest --key K --as taker --action confirm --confirm
+nfse manifest --key K --as taker --action reject --reason 3 --text "Fato gerador não ocorreu" --confirm
 ```
+
+`manifest` registers a confirmation or a rejection as the **provider, taker or
+intermediary** (events 202201/202205, 203202/203206, 204203/204207). The certificate's CNPJ
+must be that party on the invoice, or the SEFIN refuses. Rejection reasons: 1 duplicate,
+2 already issued by the taker, 3 the taxable event did not happen, 4 tax responsibility,
+5 value/service/date, 9 other; `--text` is optional, 15 to 255 characters. In code:
+`client.manifest(accessKey, { role: "taker", action: "reject", reason: 3 })`. The event
+XML is validated against `pedRegEvento_v1.01.xsd` in the tests; it has not been registered
+on the live SEFIN yet.
 
 `national-docs` already lists the invoices issued through GissOnline: a city that
 shares with the national base forwards them, with their national access key.
