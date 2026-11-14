@@ -18,10 +18,10 @@ and a CI check on every pull request.
 
 | Type | Use for | Release |
 | --- | --- | --- |
-| `feat` | a new capability | **minor** |
+| `feat` | a new capability the end user calls or sees; small improvements, wording and adjustments are `fix` or `docs` | **minor** |
 | `fix` | a bug fix | **patch** |
-| `docs` | documentation only | — |
-| `refactor` | code change that neither fixes a bug nor adds a feature | — |
+| `docs` | documentation only — README and `docs/` ship with the package | patch |
+| `refactor` | code change that neither fixes a bug nor adds a feature | patch |
 | `perf` | performance improvement | patch |
 | `test` | adding or fixing tests | — |
 | `build` | build system or dependencies | — |
