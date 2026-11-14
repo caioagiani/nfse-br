@@ -1,3 +1,15 @@
+# [2.4.0](https://github.com/[secure]/nfse-br/compare/v2.3.0...v2.4.0) (2026-11-14)
+
+
+### Bug Fixes
+
+* **giss:** envelope on SOAP errors and strict activity lists ([#33](https://github.com/[secure]/nfse-br/issues/33)) ([7bb31b0](https://github.com/[secure]/nfse-br/commit/7bb31b03fb2a3c538f07d21c711484b54cc48578))
+
+
+### Features
+
+* **nacional:** municipal parameters and national-rates command ([#32](https://github.com/[secure]/nfse-br/issues/32)) ([52e1992](https://github.com/[secure]/nfse-br/commit/52e1992e8f5a051b03fb2cff4e7bd45541972916))
+
 # [2.3.0](https://github.com/[secure]/nfse-br/compare/v2.2.0...v2.3.0) (2026-11-14)
 
 
