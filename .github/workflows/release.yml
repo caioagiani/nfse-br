@@ -10,9 +10,13 @@ name: Release
 #
 # The filename matters: npm trusted publishing is configured against
 # `release.yml` for this repository. Renaming this file breaks OIDC auth.
+#
+# `next` is the pre-release branch: each feat merged there publishes
+# `X.Y.0-next.N` under the `next` dist-tag (`npm i nfse-br@next`), so a phase can
+# be tried in the playground and in a real app before one minor lands on main.
 on:
   push:
-    branches: [main]
+    branches: [main, next]
 
 permissions:
   contents: write
@@ -68,19 +72,24 @@ jobs:
       - name: Did the version change?
         id: check
         run: |
-          published=$(npm view nfse-br version 2>/dev/null || echo none)
           current=$(node -p "require('./package.json').version")
+          published=$(npm view "nfse-br@$current" version 2>/dev/null || echo none)
           echo "current=$current" >> "$GITHUB_OUTPUT"
           if [ "$published" = "$current" ]; then
             echo "release=false" >> "$GITHUB_OUTPUT"
             echo "Version $current is already on npm — nothing to publish."
           else
             echo "release=true" >> "$GITHUB_OUTPUT"
-            echo "Publishing $current (npm has $published)."
+            echo "Publishing $current."
           fi
 
       # No NODE_AUTH_TOKEN: the credential comes from this workflow's OIDC
       # identity. Provenance is generated automatically in this mode.
       - name: Publish to npm
         if: steps.check.outputs.release == 'true'
-        run: npm publish --access public
+        run: |
+          # A pre-release must never take the `latest` tag
+          case "${{ steps.check.outputs.current }}" in
+            *-*) npm publish --access public --tag next ;;
+            *)   npm publish --access public ;;
+          esac
