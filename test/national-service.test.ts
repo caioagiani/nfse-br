@@ -424,7 +424,7 @@ describe("NationalService.distribution", () => {
 
     const documents = await national.distribution(78);
 
-    assert.equal(calls[0]?.url, `${adn}/contribuintes/DFe/78?lote=true`);
+    assert.equal(calls[0]?.url, `${adn}/contribuintes/DFe/78?cnpjConsulta=${PROVIDER_CNPJ}&lote=true`);
     assert.deepEqual(documents, [{ nsu: 79, accessKey: ACCESS_KEY, type: "NFSE", xml: NFSE_XML }]);
   });
 

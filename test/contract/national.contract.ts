@@ -42,6 +42,12 @@ describe("contrato — ambiente nacional de homologação", { skip: !configured 
     assert.equal(await client.national.findByDps(id), null);
   });
 
+  it("distribuição: a consulta pelo CNPJ do certificado responde sem rejeição", async () => {
+    // Em produção o ADN rejeitava (400 REJEICAO, sem mensagem) a consulta sem cnpjConsulta.
+    const documents = await client.national.distribution(0);
+    assert.ok(Array.isArray(documents));
+  });
+
   it("chave inexistente vira NationalError com o código HTTP", async () => {
     await assert.rejects(client.national.get("0".repeat(50)), (error: { name?: string; status?: number }) => {
       return error.name === "NationalError" && typeof error.status === "number";
