@@ -1,3 +1,10 @@
+# [2.5.0-next.9](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.8...v2.5.0-next.9) (2026-11-14)
+
+
+### Features
+
+* **infra:** add a certificate pool for many companies ([#50](https://github.com/[secure]/nfse-br/issues/50)) ([bbf0e30](https://github.com/[secure]/nfse-br/commit/bbf0e305f0af6403b9664ce62bccd07328a0dfd2))
+
 # [2.5.0-next.8](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.7...v2.5.0-next.8) (2026-11-14)
 
 
