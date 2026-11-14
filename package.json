@@ -27,6 +27,7 @@
     "build": "tsc && node -e \"require('node:fs').chmodSync('dist/cli/index.js', 0o755)\"",
     "typecheck": "tsc -p tsconfig.check.json",
     "test": "node --test test/*.test.ts",
+    "test:contract": "node --env-file-if-exists=.env --test test/contract/*.contract.ts",
     "audit:runtime": "node scripts/audit-runtime.mjs",
     "giss": "node --env-file-if-exists=.env src/cli/index.ts",
     "nfse": "node --env-file-if-exists=.env src/cli/index.ts",

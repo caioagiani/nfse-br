@@ -97,3 +97,11 @@ is brought up to date from `main` afterwards.
 This is why the commit type matters: it is the only input to the version. A `fix`
 labelled as `chore` never ships — and a release you did not intend is one
 `feat:` away, so think about the type before merging, not after.
+
+## Contract tests
+
+`npm test` uses mocks. `npm run test:contract` talks to the national homologation
+environment (`producaorestrita`) with your A1 certificate (`CERT_PATH`,
+`CERT_PASSWORD`, `GISS_CNPJ`, `GISS_ISC_MUNICIPAL`) and checks the shape of what
+comes back. It is read-only, skips itself without a certificate, and also runs
+weekly through the manual-capable `contract.yml` workflow.
