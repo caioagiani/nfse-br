@@ -26,9 +26,12 @@ describe("PortalService.listActivities", () => {
   it("o tempo limite é configurável e vira erro de timeout", async () => {
     globalThis.fetch = ((_url: unknown, init: RequestInit) =>
       new Promise((_, reject) => {
-        init.signal?.addEventListener("abort", () =>
-          reject(Object.assign(new Error("aborted"), { name: "TimeoutError" })),
-        );
+        // AbortSignal.timeout não segura o event loop; sem este timer o Node 22 encerra o teste
+        const keepAlive = setTimeout(() => {}, 5000);
+        init.signal?.addEventListener("abort", () => {
+          clearTimeout(keepAlive);
+          reject(Object.assign(new Error("aborted"), { name: "TimeoutError" }));
+        });
       })) as typeof fetch;
     const started = Date.now();
     await assert.rejects(PortalService.listActivities("3552502", undefined, 30), /30ms/);
