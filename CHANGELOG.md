@@ -1,3 +1,10 @@
+# [2.3.0](https://github.com/[secure]/nfse-br/compare/v2.2.0...v2.3.0) (2026-11-14)
+
+
+### Features
+
+* **nacional:** official rejection catalog and describeNationalCode ([#31](https://github.com/[secure]/nfse-br/issues/31)) ([badd8a8](https://github.com/[secure]/nfse-br/commit/badd8a80da09772e54ecc198186a98e738d0c3f2))
+
 # [2.2.0](https://github.com/[secure]/nfse-br/compare/v2.1.0...v2.2.0) (2026-11-14)
 
 
