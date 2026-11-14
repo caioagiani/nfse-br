@@ -66,3 +66,23 @@ describe("NfseClient — emissão nacional", () => {
     assert.deepEqual(calls[1], ["cancel", "K".repeat(50), 1, "Erro na emissao do servico"]);
   });
 });
+
+describe("NfseClient — endereços do nacional", () => {
+  it("usa os oficiais do ambiente por padrão", () => {
+    assert.equal(client().national.hosts.sefin, "https://sefin.nfse.gov.br/SefinNacional");
+  });
+
+  it("nationalHosts troca a SEFIN e o ADN", () => {
+    const custom = { sefin: "https://proxy.local/sefin", adn: "https://proxy.local/adn" };
+    const proxied = new NfseClient({
+      environment: "producao",
+      city: "suzano",
+      cnpj: PROVIDER_CNPJ,
+      municipalRegistration: "53624",
+      certificate: testPfx("segredo"),
+      certificatePassword: "segredo",
+      nationalHosts: custom,
+    });
+    assert.deepEqual(proxied.national.hosts, custom);
+  });
+});

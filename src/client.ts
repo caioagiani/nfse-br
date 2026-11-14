@@ -11,6 +11,7 @@ import { NfscService } from "./providers/giss/nfsc-service.ts";
 import { callSoap, type SoapService } from "./providers/giss/soap-client.ts";
 import {
   NationalService,
+  type NationalHosts,
   type NationalIssueOptions,
   type NationalIssueOutcome,
 } from "./providers/nacional/national-service.ts";
@@ -43,6 +44,11 @@ export interface NfseClientOptions extends Partial<GissConfig> {
    * `DEFAULT_PROFILE`. É o que `issue` usa; cada nota só informa o que varia.
    */
   profile?: Partial<IssuingProfile>;
+  /**
+   * Endereços da SEFIN e do ADN no lugar dos oficiais (proxy, servidor de testes).
+   * O certificado do cliente vai a quem estiver lá: só aponte para um destino confiável.
+   */
+  nationalHosts?: NationalHosts;
 }
 
 /** Uma troca SOAP com o GissOnline, entregue a `onExchange`. */
@@ -97,7 +103,7 @@ export class NfseClient {
   readonly nfsc: NfscService;
 
   constructor(options: NfseClientOptions = {}) {
-    const { debug = false, certificate, profile, onExchange, ...overrides } = options;
+    const { debug = false, certificate, profile, onExchange, nationalHosts, ...overrides } = options;
     this.#profile = { ...DEFAULT_PROFILE, ...profile };
 
     // `CERT_PATH` e `CERT_PASSWORD` só existem para abrir o arquivo: quando o
@@ -138,6 +144,7 @@ export class NfseClient {
       cnpj: this.config.cnpj,
       cityCode: this.config.cityCode,
       debug,
+      ...(nationalHosts && { hosts: nationalHosts }),
     });
   }
 
