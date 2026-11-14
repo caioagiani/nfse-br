@@ -106,6 +106,44 @@ batch and no protocol.
   `2` (service not provided) or `9` (other) and a justification of 15 to 255 characters.
   `replace` is not available on this path yet: cancel, then issue again.
 
+## Issuing many invoices
+
+The national API has no batch endpoint: every DPS is one synchronous `POST /nfse`. `issueMany`
+runs a list of them with a concurrency limit and a rate limit, on top of the same idempotent
+`issue`.
+
+```ts
+const results = await client.issueMany(invoices, {
+  concurrency: 4,        // requests at once (default 4)
+  ratePerSecond: 5,      // optional cap on starts per second
+  retries: 2,            // transient failures only (`error.retryable`), with growing waits
+  onProgress: (done, total, r) => console.log(`${done}/${total} DPS ${r.input.number}: ${r.status}`),
+  signal,                // AbortSignal: what has not started becomes "skipped"
+});
+
+const failed = results.filter((r) => r.status === "failed" || r.status === "skipped");
+```
+
+- **All checked before any is sent.** An invalid invoice, or a DPS number (per series) that
+  appears twice in the list, throws `ValidationError` and nothing is issued. The error
+  carries `details.index`.
+- **One result per invoice, in order**: `issued`, `already-issued`, `reconciled`, `failed`
+  (with `error`) or `skipped`. A failure never stops the others.
+- **Safe to repeat the whole call.** The DPS number is the idempotency key: what already
+  became an invoice comes back as `already-issued` and only the rest is sent. So after a
+  crash or a partial failure, run the same list again.
+- Mind the number you choose: it must be unique per series, and a gap does not matter.
+
+From the command line, a JSON array of the same invoice objects:
+
+```bash
+nfse issue-batch --file notas.json                 # validates, sends nothing
+nfse issue-batch --file notas.json --confirm --concurrency 4 --per-second 5
+```
+
+Progress goes to stderr and the final table (or `--json`) to stdout; the exit code is 1 if
+any invoice was not issued.
+
 ## DANFSe (the PDF)
 
 The national API no longer renders it. Technical Note 008 (v1.02, 2026-07-14) suspended

@@ -57,6 +57,8 @@ export { NfseClient, GissClient } from "./client.ts";
 export type {
   NfseClientOptions,
   GissClientOptions,
+  IssueManyOptions,
+  IssueManyResult,
   NationalInvoiceInput,
   SoapExchange,
 } from "./client.ts";

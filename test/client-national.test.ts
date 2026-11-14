@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { NfseClient, type NationalInvoiceInput } from "../src/index.ts";
+import { NfseClient, NfseError, type NationalInvoiceInput } from "../src/index.ts";
 import { PROVIDER_CNPJ, testPfx } from "./helpers.ts";
 
 const taker = {
@@ -84,5 +84,102 @@ describe("NfseClient — endereços do nacional", () => {
       nationalHosts: custom,
     });
     assert.deepEqual(proxied.national.hosts, custom);
+  });
+});
+
+describe("NfseClient — issueMany", () => {
+  const outcome = (n: number) => ({ status: "issued", dpsId: `DPS${n}`, nfse: { n }, alerts: [] });
+  const withIssue = (impl: (number: number) => Promise<unknown>) => {
+    const c = client();
+    c.national.issue = ((_rps: unknown, dps: { number: number }) => impl(Number(dps.number))) as never;
+    return c;
+  };
+
+  it("emite cada nota e devolve um resultado por posição", async () => {
+    const c = withIssue(async (n) => outcome(n));
+    const results = await c.issueMany([invoice({ number: 1 }), invoice({ number: 2 }), invoice({ number: 3 })], { concurrency: 2 });
+    assert.deepEqual(results.map((r) => [r.index, r.status]), [[0, "issued"], [1, "issued"], [2, "issued"]]);
+    assert.equal(results[2]!.input.number, 3);
+  });
+
+  it("uma nota que falha não impede as outras, e o erro vem no resultado", async () => {
+    const c = withIssue(async (n) => {
+      if (n === 2) throw new NfseError("recusada", { code: "REJECTED" });
+      return outcome(n);
+    });
+    const results = await c.issueMany([invoice({ number: 1 }), invoice({ number: 2 }), invoice({ number: 3 })]);
+    assert.deepEqual(results.map((r) => r.status), ["issued", "failed", "issued"]);
+    assert.match(String((results[1] as { error: Error }).error), /recusada/);
+  });
+
+  it("falha passageira é repetida; a recusa definitiva não", async () => {
+    const attempts: Record<number, number> = {};
+    const c = withIssue(async (n) => {
+      attempts[n] = (attempts[n] ?? 0) + 1;
+      if (n === 1 && attempts[n]! < 3) throw new NfseError("rede", { code: "TRANSPORT", retryable: true });
+      if (n === 2) throw new NfseError("recusada", { code: "REJECTED", retryable: false });
+      return outcome(n);
+    });
+    const results = await c.issueMany([invoice({ number: 1 }), invoice({ number: 2 })], { retries: 2, retryDelayMs: 1 });
+    assert.equal(attempts[1], 3);
+    assert.equal(attempts[2], 1);
+    assert.deepEqual(results.map((r) => r.status), ["issued", "failed"]);
+  });
+
+  it("esgotadas as tentativas, a falha vai para o resultado", async () => {
+    const c = withIssue(async () => {
+      throw new NfseError("rede", { code: "TRANSPORT", retryable: true });
+    });
+    const [result] = await c.issueMany([invoice()], { retries: 1, retryDelayMs: 1 });
+    assert.equal(result!.status, "failed");
+  });
+
+  it("número de DPS repetido recusa a lista inteira antes de enviar qualquer nota", async () => {
+    let sent = 0;
+    const c = withIssue(async (n) => (sent++, outcome(n)));
+    await assert.rejects(
+      c.issueMany([invoice({ number: 1 }), invoice({ number: 2 }), invoice({ number: "0002" })]),
+      /appears twice, at items 1 and 2/,
+    );
+    assert.equal(sent, 0);
+  });
+
+  it("série diferente não é duplicata", async () => {
+    const c = withIssue(async (n) => outcome(n));
+    const results = await c.issueMany([invoice({ number: 1, series: "1" }), invoice({ number: 1, series: "2" })]);
+    assert.deepEqual(results.map((r) => r.status), ["issued", "issued"]);
+  });
+
+  it("nota inválida recusa a lista e diz qual item", async () => {
+    let sent = 0;
+    const c = client({ simplesNacionalOptant: 2 });
+    c.national.issue = (async () => (sent++, outcome(1))) as never;
+    await assert.rejects(
+      c.issueMany([invoice({ number: 1, rate: 2 }), invoice({ number: 2 })]),
+      (error: NfseError) => error.details["index"] === 1 && /alíquota/i.test(error.message),
+    );
+    assert.equal(sent, 0);
+  });
+
+  it("onProgress conta as notas concluídas", async () => {
+    const c = withIssue(async (n) => outcome(n));
+    const seen: Array<[number, number]> = [];
+    await c.issueMany([invoice({ number: 1 }), invoice({ number: 2 })], { onProgress: (done, total) => void seen.push([done, total]) });
+    assert.deepEqual(seen, [[1, 2], [2, 2]]);
+  });
+
+  it("repetir a lista depois de uma falha só emite o que faltou", async () => {
+    const issued = new Set<number>();
+    let failNext = true;
+    const c = withIssue(async (n) => {
+      if (issued.has(n)) return { ...outcome(n), status: "already-issued" };
+      if (n === 2 && failNext) throw new NfseError("fora do ar", { code: "UNAVAILABLE" });
+      issued.add(n);
+      return outcome(n);
+    });
+    const list = [invoice({ number: 1 }), invoice({ number: 2 })];
+    assert.deepEqual((await c.issueMany(list)).map((r) => r.status), ["issued", "failed"]);
+    failNext = false;
+    assert.deepEqual((await c.issueMany(list)).map((r) => r.status), ["already-issued", "issued"]);
   });
 });
