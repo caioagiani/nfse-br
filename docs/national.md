@@ -131,6 +131,12 @@ batch and no protocol.
   the competence, taker and value may not change in some cases (E0060 to E0063). Not yet
   accepted by the live SEFIN in a real replacement.
 
+## Validation status
+
+Proved against the production SEFIN/ADN (2026-11-14): single issue, `issueMany` (DPS nº 5, R$ 0,01), cancellation (event 101101), distribution with `cnpjConsulta`, `national-received`, and the E0202 refusal when provider and taker are the same.
+
+Covered by tests and XSD validation only, not yet accepted by the live service: `comExt` with a foreign taker, manifestation events, replacement (`subst`), and issuing as a MEI.
+
 ## Issuing many invoices
 
 The national API has no batch endpoint: every DPS is one synchronous `POST /nfse`. `issueMany`
