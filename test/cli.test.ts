@@ -237,7 +237,7 @@ describe("CLI — comandos offline e validação de argumentos", () => {
   it("argumentos que faltam falham antes de qualquer chamada", () => {
     assert.match(run("cancel", "--reason", "1").stderr, /Provide the invoice --number/);
     assert.match(run("national-get").stderr, /Provide the 50-digit access --key/);
-    assert.match(run("danfse").stderr, /Usage: nfse danfse/);
+    assert.match(run("danfse").stderr, /Usage: .*danfse <nfse\.xml>/);
     for (const args of [["cancel", "--reason", "1"], ["national-get"], ["danfse"]]) {
       assert.equal(run(...args).status, 1);
     }
