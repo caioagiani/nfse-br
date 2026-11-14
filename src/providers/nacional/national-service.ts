@@ -31,7 +31,7 @@ import {
   type NationalNfse,
   type SimplesOption,
 } from "./messages.ts";
-import { isoDate } from "../../infra/xml.ts";
+import { digitsOnly, isoDate } from "../../infra/xml.ts";
 import { danfseStatus } from "./danfse/danfse-data.ts";
 import { renderDanfse } from "./danfse/danfse-pdf.ts";
 
@@ -411,6 +411,43 @@ export class NationalService {
       type: d.TipoDocumento,
       xml: unpackXml(d.ArquivoXml),
     }));
+  }
+
+  /**
+   * Notas que **outros emitiram contra o seu CNPJ** (serviços tomados), lidas da
+   * distribuição do ADN a partir de um NSU. Devolve também `nextNsu`: guarde-o e
+   * passe como `fromNsu` na próxima chamada para ler só o que é novo.
+   *
+   * Cada página da distribuição traz até 50 documentos, entre notas e eventos, emitidos
+   * e recebidos; aqui só ficam as notas em que o tomador é o certificado e o emitente é
+   * outro. `maxPages` limita a leitura de uma vez (padrão 20, mil documentos): se
+   * parou no limite, `complete` é falso e `nextNsu` continua de onde parou.
+   */
+  async received(
+    fromNsu = 0,
+    { maxPages = 20 }: { maxPages?: number } = {},
+  ): Promise<{ invoices: NationalNfse[]; nextNsu: number; complete: boolean }> {
+    const own = digitsOnly(this.options.cnpj);
+    const invoices: NationalNfse[] = [];
+    let cursor = fromNsu;
+    for (let page = 0; page < maxPages; page++) {
+      const batch = await this.distribution(cursor);
+      if (batch.length === 0) return { invoices, nextNsu: cursor, complete: true };
+      for (const document of batch) {
+        if (document.type !== "NFSE") continue;
+        let nfse: NationalNfse;
+        try {
+          nfse = parseNationalNfse(document.xml);
+        } catch {
+          continue;
+        }
+        if (digitsOnly(nfse.takerTaxId ?? "") === own && digitsOnly(nfse.issuerCnpj ?? "") !== own) {
+          invoices.push(nfse);
+        }
+      }
+      cursor = Math.max(...batch.map((d) => d.nsu)) + 1;
+    }
+    return { invoices, nextNsu: cursor, complete: false };
   }
 
   private signDps(rps: Rps, options: NationalIssueOptions): { id: string; xml: string } {

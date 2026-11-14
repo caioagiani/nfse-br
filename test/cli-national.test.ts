@@ -262,4 +262,26 @@ describe("CLI — comandos nacionais contra um servidor local", () => {
       assert.match(result.stderr, /--reason 01 to 05 or 99/);
     });
   });
+
+  describe("national-received", () => {
+    it("lista as notas recebidas e o próximo NSU", async () => {
+      const own = PROVIDER_CNPJ;
+      const received = NFSE_XML.replace(/<emit><CNPJ>\d+<\/CNPJ>/, "<emit><CNPJ>11222333000181</CNPJ>").replace(/<toma><CNPJ>\d+<\/CNPJ>/, `<toma><CNPJ>${own}</CNPJ>`);
+      handler = (url) =>
+        url.startsWith("/adn/contribuintes/DFe/0")
+          ? { json: { LoteDFe: [{ NSU: 7, ChaveAcesso: "5".repeat(50), TipoDocumento: "NFSE", ArquivoXml: packXml(received) }] } }
+          : undefined;
+      const result = await run("national-received");
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /581/);
+      assert.match(result.stdout, /Next NSU: 8/);
+    });
+
+    it("sem nada diz que está vazio", async () => {
+      handler = () => undefined;
+      const result = await run("national-received", "--from", "50");
+      assert.match(result.stdout, /No invoice issued against your CNPJ/);
+      assert.match(result.stdout, /Next NSU: 50/);
+    });
+  });
 });

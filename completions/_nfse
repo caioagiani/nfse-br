@@ -50,6 +50,7 @@ _nfse() {
     'national-pdf:Download the DANFSe'
     'national-xml:Download the national invoice XML'
     'national-docs:Invoices and events where your CNPJ appears'
+    'national-received:Invoices others issued against your CNPJ'
     'national-rates:The city ISS rate and special regimes for a service'
     'issue-batch:Issue many national invoices from a JSON file'
     'manifest:Confirm or reject an invoice as provider, taker or intermediary'
@@ -182,6 +183,9 @@ _nfse() {
             '--out[Target directory or file]:target:_files'
           ;;
         national-docs)
+          _arguments $global_opts '--from[Start after this NSU]:nsu:'
+          ;;
+        national-received)
           _arguments $global_opts '--from[Start after this NSU]:nsu:'
           ;;
         national-rates)

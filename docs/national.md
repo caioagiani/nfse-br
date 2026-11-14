@@ -72,6 +72,7 @@ gets `E0039`. The restricted environment does not apply the exception yet.
 ```bash
 nfse national-status                      # the two flags above
 nfse national-docs [--from NSU]           # invoices and events where your CNPJ appears
+nfse national-received [--from NSU]       # services taken: invoices others issued against you
 nfse national-get --key K                 # one invoice by its 50-digit access key
 nfse national-pdf --key K [--out DIR]     # the DANFSe, generated locally (see below)
 nfse national-xml --key K [--out DIR]
@@ -92,6 +93,12 @@ must be that party on the invoice, or the SEFIN refuses. Rejection reasons: 1 du
 `client.manifest(accessKey, { role: "taker", action: "reject", reason: 3 })`. The event
 XML is validated against `pedRegEvento_v1.01.xsd` in the tests; it has not been registered
 on the live SEFIN yet.
+
+`national-received` reads the same distribution but keeps only the invoices **others issued
+against your CNPJ** (services taken), and prints `Next NSU`: pass it back in `--from` to read
+only what is new. In code, `client.received(fromNsu)` returns `{ invoices, nextNsu, complete }`;
+store `nextNsu` between runs. `complete: false` means it stopped at the page limit (20 pages
+of up to 50 documents) and the next call continues from there.
 
 `national-docs` already lists the invoices issued through GissOnline: a city that
 shares with the national base forwards them, with their national access key.
