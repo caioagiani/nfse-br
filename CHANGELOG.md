@@ -1,3 +1,5 @@
+# [2.5.0-next.7](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.6...v2.5.0-next.7) (2026-11-14)
+
 # [2.5.0-next.6](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.5...v2.5.0-next.6) (2026-11-14)
 
 
