@@ -1,3 +1,10 @@
+# [2.5.0-next.3](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.2...v2.5.0-next.3) (2026-11-14)
+
+
+### Features
+
+* **nacional:** comExt and foreign taker in the national DPS ([#44](https://github.com/[secure]/nfse-br/issues/44)) ([2c43c75](https://github.com/[secure]/nfse-br/commit/2c43c754b1476d30c5519c0c7a49f3ca46886432))
+
 # [2.5.0-next.2](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.1...v2.5.0-next.2) (2026-11-14)
 
 
