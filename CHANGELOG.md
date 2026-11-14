@@ -1,3 +1,10 @@
+## [2.4.3](https://github.com/[secure]/nfse-br/compare/v2.4.2...v2.4.3) (2026-11-14)
+
+
+### Bug Fixes
+
+* **nacional:** send cnpjConsulta, without it the ADN rejects the query ([#52](https://github.com/[secure]/nfse-br/issues/52)) ([6753deb](https://github.com/[secure]/nfse-br/commit/6753debe0ba6e9c917d6e7f4c76f6715991dbf83))
+
 ## [2.4.2](https://github.com/[secure]/nfse-br/compare/v2.4.1...v2.4.2) (2026-11-14)
 
 ## [2.4.1](https://github.com/[secure]/nfse-br/compare/v2.4.0...v2.4.1) (2026-11-14)
