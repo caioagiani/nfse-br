@@ -78,6 +78,7 @@ export type {
   MunicipalAgreement,
   NationalIssueOptions,
   NationalIssueOutcome,
+  NationalHosts,
   NationalServiceOptions,
   ServiceRate,
   SpecialRegime,

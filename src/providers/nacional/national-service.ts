@@ -114,15 +114,26 @@ export interface NationalServiceOptions {
   debug?: boolean;
   /** Substitui o transporte HTTPS — para testes, ou para passar por um proxy */
   transport?: typeof callNational;
+  /**
+   * Outros endereços no lugar dos oficiais do ambiente — um proxy corporativo, um
+   * servidor de testes. O certificado do cliente vai a quem estiver lá: só aponte
+   * para um destino em que você confie.
+   */
+  hosts?: NationalHosts;
+}
+
+export interface NationalHosts {
+  sefin: string;
+  adn: string;
 }
 
 export class NationalService {
-  readonly hosts: (typeof NATIONAL_HOSTS)[Environment];
+  readonly hosts: NationalHosts;
   private readonly options: NationalServiceOptions;
 
   constructor(options: NationalServiceOptions) {
     this.options = options;
-    this.hosts = NATIONAL_HOSTS[options.environment];
+    this.hosts = options.hosts ?? NATIONAL_HOSTS[options.environment];
   }
 
   get environmentCode(): NationalEnvironment {

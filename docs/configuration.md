@@ -8,6 +8,7 @@
 | `GISS_MUNICIPIO` | city slug in the host (`suzano` → `ws-suzano.giss.com.br`) — see [municipalities.md](municipalities.md) |
 | `GISS_VERSAO` | layout version (`2.04`) |
 | `NFSE_EMISSOR` | `giss` or `nacional` — who issues and cancels. Empty: `issue` goes national, `cancel --key` national and `cancel --number` GissOnline; set `giss` for a city that has not adopted the national issuer; see [national.md](national.md) |
+| `NFSE_NATIONAL_SEFIN` / `NFSE_NATIONAL_ADN` | other addresses for the national SEFIN and ADN (a corporate proxy, a test server). Both or neither. The client certificate goes to whoever answers there, so point only at a destination you trust. Programmatic equivalent: `new NfseClient({ nationalHosts })` |
 | `GISS_CODIGO_MUNICIPIO` | IBGE code — optional for a [known city](municipalities.md), which supplies it |
 | `CERT_PATH` / `CERT_PASSWORD` | A1 certificate and its password |
 | `GISS_CNPJ` / `GISS_ISC_MUNICIPAL` | the provider |

@@ -277,6 +277,7 @@ async function main() {
     environment: values.env as Environment | undefined,
     issuer: values.issuer as Issuer | undefined,
     debug: values.debug,
+    nationalHosts: nationalHostsFromEnv(),
   });
 
   warnCertificateExpiry(client.certificate);
@@ -628,6 +629,21 @@ function warnCertificateExpiry(certificate: Certificate, now = new Date()): void
     `⚠ The A1 certificate expires in ${days} day(s), on ${isoDate(certificate.validTo)}. ` +
       "Renew it before then: an expired certificate stops every request.\n",
   );
+}
+
+/**
+ * `NFSE_NATIONAL_SEFIN` e `NFSE_NATIONAL_ADN` trocam os endereços do nacional (proxy,
+ * servidor de testes). Só valem os dois juntos: um endereço oficial e outro não
+ * mandaria o certificado para onde ninguém planejou.
+ */
+function nationalHostsFromEnv(): { sefin: string; adn: string } | undefined {
+  const sefin = process.env["NFSE_NATIONAL_SEFIN"]?.trim();
+  const adn = process.env["NFSE_NATIONAL_ADN"]?.trim();
+  if (!sefin && !adn) return undefined;
+  if (!sefin || !adn) {
+    throw new ValidationError("Set NFSE_NATIONAL_SEFIN and NFSE_NATIONAL_ADN together, or neither");
+  }
+  return { sefin: sefin.replace(/\/+$/, ""), adn: adn.replace(/\/+$/, "") };
 }
 
 const GISS_WRITE_COMMANDS = new Set(["issue", "cancel", "replace"]);
