@@ -88,6 +88,11 @@ export {
   NATIONAL_NAMESPACE,
   NATIONAL_VERSION,
 } from "./providers/nacional/messages.ts";
+export {
+  NATIONAL_REJECTION_CODES,
+  describeNationalCode,
+} from "./providers/nacional/rejection-codes.ts";
+export type { NationalRejectionCode } from "./providers/nacional/rejection-codes.ts";
 export { renderDanfse, drawDanfse } from "./providers/nacional/danfse/danfse-pdf.ts";
 export type { DanfseOptions } from "./providers/nacional/danfse/danfse-pdf.ts";
 export { buildDanfseData, danfseStatus } from "./providers/nacional/danfse/danfse-data.ts";
