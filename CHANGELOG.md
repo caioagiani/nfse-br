@@ -1,3 +1,21 @@
+# [2.5.0](https://github.com/[secure]/nfse-br/compare/v2.4.3...v2.5.0) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** replace pdf-lib with the maintained [@cantoo](https://github.com/cantoo) fork ([#49](https://github.com/[secure]/nfse-br/issues/49)) ([147736f](https://github.com/[secure]/nfse-br/commit/147736f3e8b1fbfd96e1a1e98db4d917b19d1fd5))
+
+
+### Features
+
+* **infra:** add a certificate pool for many companies ([#50](https://github.com/[secure]/nfse-br/issues/50)) ([bbf0e30](https://github.com/[secure]/nfse-br/commit/bbf0e305f0af6403b9664ce62bccd07328a0dfd2))
+* **nacional:** comExt and foreign taker in the national DPS ([#44](https://github.com/[secure]/nfse-br/issues/44)) ([2c43c75](https://github.com/[secure]/nfse-br/commit/2c43c754b1476d30c5519c0c7a49f3ca46886432))
+* **nacional:** configurable SEFIN/ADN hosts, CLI tested end to end ([#42](https://github.com/[secure]/nfse-br/issues/42)) ([98cda12](https://github.com/[secure]/nfse-br/commit/98cda12cedfd86d7ac43cc99e264a25b7b0f64e0))
+* **nacional:** confirm or reject an invoice (manifestation events) ([#45](https://github.com/[secure]/nfse-br/issues/45)) ([1d8d185](https://github.com/[secure]/nfse-br/commit/1d8d18501b7720134a7f3239b2d3234ac26c5c53))
+* **nacional:** issueMany and issue-batch with rate limits ([#43](https://github.com/[secure]/nfse-br/issues/43)) ([c7519e2](https://github.com/[secure]/nfse-br/commit/c7519e2b5b8c4c924aa6d85a85b03ff64308a48a))
+* **nacional:** read services taken from the distribution ([#47](https://github.com/[secure]/nfse-br/issues/47)) ([38ae982](https://github.com/[secure]/nfse-br/commit/38ae9825ee169493b986d101f43a9b2cd11df317))
+* **nacional:** replace an invoice by its access key ([#46](https://github.com/[secure]/nfse-br/issues/46)) ([9a6e7b6](https://github.com/[secure]/nfse-br/commit/9a6e7b60f27fc3dd1a6e860563b30bd793336c89))
+
 ## [2.4.3](https://github.com/[secure]/nfse-br/compare/v2.4.2...v2.4.3) (2026-11-14)
 
 
