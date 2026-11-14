@@ -1,3 +1,5 @@
+## [2.4.2](https://github.com/[secure]/nfse-br/compare/v2.4.1...v2.4.2) (2026-11-14)
+
 ## [2.4.1](https://github.com/[secure]/nfse-br/compare/v2.4.0...v2.4.1) (2026-11-14)
 
 # [2.4.0](https://github.com/[secure]/nfse-br/compare/v2.3.0...v2.4.0) (2026-11-14)
