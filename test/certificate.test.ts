@@ -66,7 +66,7 @@ function selfSigned(cn: string) {
   return { keys, cert };
 }
 
-function pfxOf(key: forge.pki.PrivateKey | null, certs: forge.pki.Certificate[], password: string) {
+function pfxOf(key: forge.pki.rsa.PrivateKey | null, certs: forge.pki.Certificate[], password: string) {
   const asn1 = forge.pkcs12.toPkcs12Asn1(key, certs, password, { algorithm: "3des" });
   return Buffer.from(forge.asn1.toDer(asn1).getBytes(), "binary");
 }
