@@ -8,6 +8,7 @@ import {
 import { createXmlSigner } from "./infra/xml-signer.ts";
 import type { QueryResult } from "./providers/giss/messages/parser.ts";
 import { NfscService } from "./providers/giss/nfsc-service.ts";
+import { callSoap, type SoapService } from "./providers/giss/soap-client.ts";
 import {
   NationalService,
   type NationalIssueOptions,
@@ -32,10 +33,28 @@ export interface NfseClientOptions extends Partial<GissConfig> {
   /** Loga na saída de erro os XMLs enviados e recebidos */
   debug?: boolean;
   /**
+   * Chamado a cada troca SOAP com o GissOnline: o envio já assinado e o retorno
+   * bruto — ou o erro, inclusive SOAP Fault e falha de rede. Serve para guardar
+   * o XML de cada operação sem embrulhar o transporte.
+   */
+  onExchange?: (exchange: SoapExchange) => void;
+  /**
    * Perfil fiscal do prestador (item, CNAE, NBS, regime…), por cima do
    * `DEFAULT_PROFILE`. É o que `issue` usa; cada nota só informa o que varia.
    */
   profile?: Partial<IssuingProfile>;
+}
+
+/** Uma troca SOAP com o GissOnline, entregue a `onExchange`. */
+export interface SoapExchange {
+  service: SoapService;
+  operation: string;
+  /** O XML enviado, já assinado */
+  request: string;
+  /** O retorno bruto; ausente quando a chamada falhou */
+  response?: string;
+  /** A falha, quando houve (SOAP Fault, rede, certificado) */
+  error?: unknown;
 }
 
 /** Uma nota nacional: só o que varia por emissão. O resto vem do `profile` do client. */
@@ -70,7 +89,7 @@ export class NfseClient {
   readonly nfsc: NfscService;
 
   constructor(options: NfseClientOptions = {}) {
-    const { debug = false, certificate, profile, ...overrides } = options;
+    const { debug = false, certificate, profile, onExchange, ...overrides } = options;
     this.#profile = { ...DEFAULT_PROFILE, ...profile };
 
     // `CERT_PATH` e `CERT_PASSWORD` só existem para abrir o arquivo: quando o
@@ -95,6 +114,7 @@ export class NfseClient {
       signer,
       cityCode: this.config.cityCode,
       debug,
+      ...(onExchange && { transport: observed(onExchange) }),
     };
 
     this.nfse = new NfseService({
@@ -173,6 +193,29 @@ export class NfseClient {
       if (result.invoices.length < 50) return;
     }
   }
+}
+
+/** `callSoap` que conta cada troca ao observador, sem alterar o que ele devolve ou lança. */
+function observed(onExchange: (exchange: SoapExchange) => void): typeof callSoap {
+  // Um observador que lança não pode mudar o resultado de uma emissão.
+  const notify = (exchange: SoapExchange) => {
+    try {
+      onExchange(exchange);
+    } catch {
+      // só observa
+    }
+  };
+  return async (operation, request, options) => {
+    const base = { service: options.service, operation, request };
+    try {
+      const response = await callSoap(operation, request, options);
+      notify({ ...base, response: response.xml });
+      return response;
+    } catch (error) {
+      notify({ ...base, error });
+      throw error;
+    }
+  };
 }
 
 /** Nome anterior a 2.0, quando o cliente só falava com o GissOnline. */

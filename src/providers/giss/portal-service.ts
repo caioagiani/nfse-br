@@ -41,6 +41,8 @@ export interface PortalCredentials {
   cnpj?: string;
   /** `APP_ID` da cidade, quando ela não está em `MUNICIPALITIES` */
   appId?: string;
+  /** Tempo limite de cada chamada ao portal, em ms (padrão 60 000) */
+  timeoutMs?: number;
 }
 
 /**
@@ -61,6 +63,8 @@ export interface PortalCertificateCredentials {
   cnpj?: string;
   /** `APP_ID` da cidade, quando ela não está em `MUNICIPALITIES` */
   appId?: string;
+  /** Tempo limite de cada chamada ao portal, em ms (padrão 60 000) */
+  timeoutMs?: number;
 }
 
 /** As duas formas de entrar no portal. */
@@ -219,6 +223,7 @@ async function passwordLogin(
   credentials: PortalCredentials,
 ): Promise<InitialToken> {
   return requestJson<InitialToken>(base, "/service-empresa/api/login/token", {
+    timeoutMs: credentials.timeoutMs,
     method: "POST",
     headers: {
       APP_ID: appId,
@@ -258,7 +263,7 @@ async function certificateLogin(
   const { conteudo: nonce } = await requestJson<ApiResponse<string>>(
     base,
     "/service-empresa/api/login/certificado/nonce",
-    { headers: { APP_ID: appId } },
+    { headers: { APP_ID: appId }, timeoutMs: credentials.timeoutMs },
   );
 
   const signer = createSign("sha256");
@@ -269,6 +274,7 @@ async function certificateLogin(
     base,
     "/service-empresa/api/login/certificado/token",
     {
+      timeoutMs: credentials.timeoutMs,
       method: "POST",
       headers: {
         APP_ID: appId,
@@ -426,6 +432,7 @@ export class PortalService {
         }>;
       };
     }>(base, "/service-empresa/api/login/permissao", {
+      timeoutMs: credentials.timeoutMs,
       headers: { Authorization: `Bearer ${initial.access_token}` },
     });
 
@@ -444,6 +451,7 @@ export class PortalService {
       base,
       "/service-empresa/api/login/token",
       {
+        timeoutMs: credentials.timeoutMs,
         method: "POST",
         headers: {
           APP_ID: appId,
@@ -579,13 +587,18 @@ export class PortalService {
   static async listActivities(
     cityCode: string | number,
     appId?: string,
+    timeoutMs?: number,
   ): Promise<MunicipalActivity[]> {
+    const route = `/service-atividade/api/atividade/v2/lista-atividades/${cityCode}`;
     const response = await requestJson<ApiResponse<RawActivity[]>>(
       `https://${cityCode}.giss.com.br`,
-      `/service-atividade/api/atividade/v2/lista-atividades/${cityCode}`,
-      { headers: { APP_ID: appIdFor(cityCode, appId) } },
+      route,
+      { headers: { APP_ID: appIdFor(cityCode, appId) }, timeoutMs },
     );
-    return (response.conteudo ?? []).map(toActivity);
+    // Uma lista vazia seria indistinguível de "o município não tem atividades":
+    // resposta sem a lista é falha, e quem chama precisa saber.
+    if (!Array.isArray(response?.conteudo)) throw new PortalError(route, 200, response);
+    return response.conteudo.map(toActivity);
   }
 
   /**
@@ -701,7 +714,7 @@ export class PortalService {
       requestBinary(
         this.base,
         `/service-empresa/api/fale-conosco/download?idMensagem=${messageId}&idAnexo=${attachmentId}`,
-        { headers },
+        { headers, timeoutMs: this.#credentials.timeoutMs },
         "application/octet-stream",
       ),
     );
@@ -711,6 +724,7 @@ export class PortalService {
   private async call<T>(route: string, init: RequestInit = {}): Promise<T> {
     return this.withSession((headers) =>
       requestJson<T>(this.base, route, {
+        timeoutMs: this.#credentials.timeoutMs,
         ...init,
         headers: { ...headers, ...init.headers },
       }),

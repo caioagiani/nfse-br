@@ -56,6 +56,7 @@ export type {
   NfseClientOptions,
   GissClientOptions,
   NationalInvoiceInput,
+  SoapExchange,
 } from "./client.ts";
 export {
   lookupZip,

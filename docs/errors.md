@@ -22,6 +22,11 @@ try {
 }
 ```
 
+> **Since 2.0 the message text is not stable.** Network and timeout failures used to reach
+> the caller as raw Node errors; they are now `TransportError` with a sentence in
+> Portuguese. Decide from `code`, `retryable`, `outcomeUnknown` and `details` (such as
+> `errno`), never from the text. See [migration.md](migration.md).
+
 ## Fields
 
 | Field | Meaning |
