@@ -1,3 +1,10 @@
+# [2.5.0-next.5](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.4...v2.5.0-next.5) (2026-11-14)
+
+
+### Features
+
+* **nacional:** replace an invoice by its access key ([#46](https://github.com/[secure]/nfse-br/issues/46)) ([9a6e7b6](https://github.com/[secure]/nfse-br/commit/9a6e7b60f27fc3dd1a6e860563b30bd793336c89))
+
 # [2.5.0-next.4](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.3...v2.5.0-next.4) (2026-11-14)
 
 
