@@ -1,3 +1,10 @@
+# [2.5.0-next.6](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.5...v2.5.0-next.6) (2026-11-14)
+
+
+### Features
+
+* **nacional:** read services taken from the distribution ([#47](https://github.com/[secure]/nfse-br/issues/47)) ([38ae982](https://github.com/[secure]/nfse-br/commit/38ae9825ee169493b986d101f43a9b2cd11df317))
+
 # [2.5.0-next.5](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.4...v2.5.0-next.5) (2026-11-14)
 
 
