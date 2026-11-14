@@ -5,14 +5,17 @@
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:https";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, describe, it } from "node:test";
 import forge from "node-forge";
+import { packXml } from "../src/providers/nacional/national-client.ts";
 import { PROVIDER_CNPJ, SUZANO, testPfx } from "./helpers.ts";
+
+const NFSE_XML = readFileSync(new URL("./fixtures/national-nfse.xml", import.meta.url), "utf8");
 
 function localTls() {
   const keys = forge.pki.rsa.generateKeyPair(2048);
@@ -29,7 +32,7 @@ function localTls() {
   return { key: forge.pki.privateKeyToPem(keys.privateKey), cert: forge.pki.certificateToPem(cert) };
 }
 
-type Handler = (url: string) => { status?: number; json: unknown } | undefined;
+type Handler = (url: string, method: string) => { status?: number; json: unknown } | undefined;
 
 describe("CLI — comandos nacionais contra um servidor local", () => {
   const tls = localTls();
@@ -46,7 +49,7 @@ describe("CLI — comandos nacionais contra um servidor local", () => {
   before(async () => {
     server = createServer(tls, (req, res) => {
       seen.push(`${req.method} ${req.url}`);
-      const reply = handler(req.url ?? "") ?? { status: 404, json: {} };
+      const reply = handler(req.url ?? "", req.method ?? "GET") ?? { status: 404, json: {} };
       res.writeHead(reply.status ?? 200, { "content-type": "application/json" });
       res.end(JSON.stringify(reply.json));
     });
@@ -136,5 +139,63 @@ describe("CLI — comandos nacionais contra um servidor local", () => {
     assert.equal(child.status, 1);
     assert.match(child.stderr, /NFSE_NATIONAL_SEFIN and NFSE_NATIONAL_ADN together/);
     assert.equal(seen.length, 0);
+  });
+
+  describe("issue-batch", () => {
+    const taker = {
+      cnpj: "52884617000110",
+      legalName: "Cliente Teste Ltda",
+      address: { street: "Rua A", number: "10", district: "Centro", cityCode: SUZANO, state: "SP", zipCode: "08600000" },
+    };
+    const file = join(dir, "notas.json");
+    writeFileSync(
+      file,
+      JSON.stringify([
+        { number: 1, taker, serviceAmount: 100, description: "Recarga A" },
+        { number: 2, taker, serviceAmount: 200, description: "Recarga B" },
+      ]),
+    );
+
+    it("sem --confirm valida a lista e não envia nada", async () => {
+      seen.length = 0;
+      const result = await run("issue-batch", "--file", file);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /2 invoice\(s\) are valid and unique\. Nothing was sent/);
+      assert.equal(seen.length, 0);
+    });
+
+    it("com --confirm emite cada nota; a que falha deixa saída 1 e as outras seguem", async () => {
+      let posts = 0;
+      handler = (url, method) => {
+        if (method === "GET" && url.startsWith("/sefin/dps/")) return { status: 404, json: {} };
+        if (method === "POST" && url === "/sefin/nfse") {
+          return ++posts === 1
+            ? { status: 201, json: { nfseXmlGZipB64: packXml(NFSE_XML) } }
+            : { status: 400, json: { erros: [{ codigo: "E0625", descricao: "recusada" }] } };
+        }
+        return undefined;
+      };
+      const result = await run("issue-batch", "--file", file, "--confirm", "--concurrency", "1");
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stdout, /DPS 1\s+issued/);
+      assert.match(result.stdout, /DPS 2\s+failed/);
+      assert.match(result.stdout, /1 ok, 1 not issued/);
+      assert.match(result.stderr, /\[2\/2\] DPS/);
+      assert.match(result.stderr, /already-issued/);
+    });
+
+    it("arquivo que não é uma lista é recusado", async () => {
+      const bad = join(dir, "ruim.json");
+      writeFileSync(bad, "{}");
+      const result = await run("issue-batch", "--file", bad);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /non-empty JSON array/);
+    });
+
+    it("sem --file diz o que falta", async () => {
+      const result = await run("issue-batch");
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /--file/);
+    });
   });
 });

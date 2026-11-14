@@ -51,6 +51,7 @@ _nfse() {
     'national-xml:Download the national invoice XML'
     'national-docs:Invoices and events where your CNPJ appears'
     'national-rates:The city ISS rate and special regimes for a service'
+    'issue-batch:Issue many national invoices from a JSON file'
     'danfse:DANFSe from a saved national XML (offline)'
   )
 
@@ -184,6 +185,9 @@ _nfse() {
           ;;
         national-rates)
           _arguments $global_opts '--item[Service, e.g. 01.09.02.001]:service:' '--date[Competence date]:date:'
+          ;;
+        issue-batch)
+          _arguments $global_opts '--file[JSON array of invoices]:file:_files -g "*.json"' '--confirm[Actually issue]' '--concurrency[Parallel requests]:n:' '--per-second[Rate limit]:n:'
           ;;
         danfse)
           _arguments $global_opts '*--event[Event XML of the invoice]:event:_files -g "*.xml"' \

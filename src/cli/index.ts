@@ -27,7 +27,7 @@ import {
   type NationalNfse,
 } from "../providers/nacional/messages.ts";
 import type { Nfse, QueryResult } from "../providers/giss/messages/parser.ts";
-import { NfseClient } from "../client.ts";
+import { NfseClient, type NationalInvoiceInput } from "../client.ts";
 import { renderDanfse } from "../providers/nacional/danfse/danfse-pdf.ts";
 import {
   lookupParty,
@@ -135,6 +135,8 @@ NATIONAL ISSUER (Sistema Nacional NFS-e — mandatory for Simples from 2026-11-0
   national-pdf --key K [--out DIR|FILE]             DANFSe (the national PDF)
   national-xml --key K [--out DIR|FILE]             Invoice XML
   national-docs [--from NSU]                        Invoices and events where your CNPJ appears
+  issue-batch --file notas.json [--confirm] [--concurrency N] [--per-second N]
+                                                    Issue many invoices from a JSON array (safe to repeat)
   national-rates --item 01.09.02.001 [--date D]     The city's ISS rate and special regimes for a service
   danfse <nfse.xml> [--event FILE]... [--out DIR|FILE]  DANFSe from a saved XML (offline)
          [--status cancelled|replaced]              Watermark; otherwise taken from the events
@@ -175,6 +177,9 @@ const options = {
   protocol: { type: "string" },
   export: { type: "boolean", default: false },
   out: { type: "string" },
+  file: { type: "string" },
+  concurrency: { type: "string" },
+  "per-second": { type: "string" },
   customer: { type: "string" },
   amount: { type: "string" },
   description: { type: "string" },
@@ -892,6 +897,68 @@ async function runNationalCommand(
       );
       printNational(outcome.nfse, values);
       for (const alert of outcome.alerts) console.log(`⚠ [${alert.code}] ${alert.message}`);
+      return true;
+    }
+
+    case "issue-batch": {
+      if (!values.file) throw new ValidationError("Provide the JSON file with --file notas.json");
+      const parsed: unknown = JSON.parse(readFileSync(values.file, "utf8"));
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new ValidationError("The file must hold a non-empty JSON array of invoices");
+      }
+      const profile = new ProfileRepository().load();
+      const invoices = (parsed as NationalInvoiceInput[]).map((invoice) => ({
+        ...invoice,
+        profile: { ...profile, ...invoice.profile },
+      }));
+      const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
+      const ratePerSecond = values["per-second"] ? Number(values["per-second"]) : undefined;
+
+      if (!values.confirm) {
+        // Valida e monta todas as DPS sem enviar: o mesmo que `issueMany` faz antes de começar.
+        invoices.forEach((invoice) => client.previewIssue(invoice));
+        console.log(`${invoices.length} invoice(s) are valid and unique. Nothing was sent.`);
+        for (const [i, invoice] of invoices.entries()) {
+          console.log(`  ${String(i).padStart(3)}  DPS ${invoice.number}  R$ ${invoice.serviceAmount}  ${invoice.taker.legalName}`);
+        }
+        console.log("\nRepeat with --confirm to actually issue. Repeating the same file later is safe.");
+        return true;
+      }
+
+      const results = await client.issueMany(invoices, {
+        concurrency,
+        ratePerSecond,
+        onProgress: (done, total, r) => {
+          const detail = r.status === "failed" ? ` ${(r.error as Error).message}` : "";
+          console.error(`[${done}/${total}] DPS ${r.input.number}: ${r.status}${detail}`);
+        },
+      });
+      const failed = results.filter((r) => r.status === "failed" || r.status === "skipped");
+      if (values.json) {
+        console.log(
+          JSON.stringify(
+            results.map((r) => ({
+              index: r.index,
+              number: r.input.number,
+              status: r.status,
+              accessKey: "nfse" in r ? r.nfse.accessKey : undefined,
+              error: r.status === "failed" ? (r.error as Error).message : undefined,
+            })),
+            null,
+            2,
+          ),
+        );
+      } else {
+        for (const r of results) {
+          const key = "nfse" in r ? ` ${r.nfse.accessKey}` : "";
+          console.log(`${String(r.index).padStart(3)}  DPS ${r.input.number}  ${r.status}${key}`);
+        }
+        console.log(`\n${results.length - failed.length} ok, ${failed.length} not issued.`);
+      }
+      if (failed.length > 0) {
+        console.error("Repeat the same command: what was issued comes back as already-issued, only the rest is sent.");
+        process.exitCode = 1;
+      }
       return true;
     }
 
