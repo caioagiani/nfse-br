@@ -40,6 +40,35 @@ export interface DpsContext {
   /** Regime de apuração do Simples: 1 = tudo pelo SN (padrão para ME/EPP) */
   simplesApportionment?: 1 | 2 | 3;
   issueDate?: Date;
+  /** Esta DPS substitui uma nota já emitida: o grupo `subst` */
+  replaces?: Replacement;
+}
+
+/**
+ * Substituição de NFS-e. `reason` (`cMotivo`): 01 desenquadramento do Simples, 02
+ * enquadramento no Simples, 03 inclusão retroativa de imunidade/isenção, 04 exclusão
+ * retroativa de imunidade/isenção, 05 rejeição pelo tomador/intermediário responsável
+ * pelo tributo, 99 outros.
+ */
+export interface Replacement {
+  /** Chave de acesso, com 50 dígitos, da nota que será substituída */
+  accessKey: string;
+  reason: "01" | "02" | "03" | "04" | "05" | "99";
+  /** Descrição do motivo, de 15 a 255 caracteres */
+  justification?: string;
+}
+
+function assertReplacement({ accessKey, reason, justification }: Replacement): void {
+  const fail = (message: string, details: Record<string, unknown>): never => {
+    throw new ValidationError(message, { provider: "nacional", details });
+  };
+  if (!/^\d{50}$/.test(accessKey)) fail("A chave da nota substituída precisa ter 50 dígitos", { accessKey });
+  if (!["01", "02", "03", "04", "05", "99"].includes(reason)) {
+    fail("Motivo da substituição: 01, 02, 03, 04, 05 ou 99", { reason });
+  }
+  if (justification !== undefined && (justification.trim().length < 15 || justification.trim().length > 255)) {
+    fail("A justificativa da substituição precisa ter de 15 a 255 caracteres", { length: justification.trim().length });
+  }
 }
 
 /**
@@ -99,6 +128,7 @@ export function buildDps(rps: Rps, context: DpsContext): string {
   const values = service.amounts;
 
   assertSupported(rps);
+  if (context.replaces) assertReplacement(context.replaces);
 
   const taxability = TAXABILITY[service.issTaxability];
   if (taxability === undefined) {
@@ -130,6 +160,12 @@ export function buildDps(rps: Rps, context: DpsContext): string {
           // obrigatório em infDPS. A produção ainda segue o leiaute de 2026-02-09.
           context.environment === 2 ? element("finNFSe", 0) : undefined,
           element("cLocEmi", context.cityCode),
+          context.replaces &&
+            group("subst", [
+              element("chSubstda", context.replaces.accessKey),
+              element("cMotivo", context.replaces.reason),
+              element("xMotivo", context.replaces.justification?.trim()),
+            ]),
           group("prest", [
             element("CNPJ", digitsOnly(context.cnpj)),
             // O IM fica de fora: o cadastro nacional já a conhece, e uma
@@ -217,7 +253,7 @@ function assertSupported(rps: Rps): void {
   const missing = [
     rps.intermediary && "intermediário",
     rps.construction && "obra",
-    rps.replacedRps && "substituição de nota",
+    rps.replacedRps && "substituição de nota por RPS (use `client.replace` com a chave da nota)",
   ].filter(Boolean);
   if (missing.length > 0) {
     throw new NotSupportedError(

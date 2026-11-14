@@ -225,4 +225,41 @@ describe("CLI — comandos nacionais contra um servidor local", () => {
       assert.match((await run("manifest", "--key", key, "--as", "taker", "--action", "reject")).stderr, /`reason`/);
     });
   });
+
+  describe("replace", () => {
+    const key = "4".repeat(50);
+    const args = ["replace", "--key", key, "--reason", "1", "--customer", "x", "--amount", "100", "--description", "Recarga", "--rate", "2", "--dps", "21"];
+
+    it("sem --confirm monta a DPS com subst e não envia nada", async () => {
+      const added = await run("customer-add", "--tax-id", "52884617000110", "--name", "Cli Ltda", "--alias", "x");
+      assert.equal(added.status, 0, added.stderr);
+      seen.length = 0;
+      const result = await run(...args, "--xml");
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, new RegExp(`<subst><chSubstda>${key}</chSubstda><cMotivo>01</cMotivo></subst>`));
+      assert.equal(seen.length, 0);
+    });
+
+    it("com --confirm emite a DPS de substituição", async () => {
+      let sent = "";
+      handler = (url, method) => {
+        if (method === "GET" && url.startsWith("/sefin/dps/")) return { status: 404, json: {} };
+        if (method === "POST" && url === "/sefin/nfse") {
+          sent = "posted";
+          return { status: 201, json: { nfseXmlGZipB64: packXml(NFSE_XML) } };
+        }
+        return undefined;
+      };
+      const result = await run(...args, "--confirm");
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(sent, "posted");
+      assert.match(result.stdout, /Replacement issued:/);
+    });
+
+    it("exige --reason", async () => {
+      const result = await run("replace", "--key", key);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /--reason 01 to 05 or 99/);
+    });
+  });
 });

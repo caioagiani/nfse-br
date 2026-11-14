@@ -31,7 +31,7 @@ Setting it always wins. Left empty, the CLI decides, and says so in the preview:
 | --- | --- |
 | `issue` | **national**, for everyone |
 | `cancel` | **national** with `--key`; GissOnline with `--number` |
-| `replace` | GissOnline, except for a Simples optant after 2026-11-01, who gets the error that says to cancel and issue again |
+| `replace` | the national issuer when you pass `--key` (or for a Simples optant after 2026-11-01); GissOnline with `--number` |
 
 National is the default because it is the country's standard and, since 2026-11-01, the only
 issuer left for the Simples Nacional. A taxpayer who is **not** an ME/EPP apportioned through the
@@ -115,7 +115,14 @@ batch and no protocol.
   SHA-256, so the client uses it there.
 - **Cancelling is an event** (`101101`) on the access key, with reason `1` (issuing error),
   `2` (service not provided) or `9` (other) and a justification of 15 to 255 characters.
-  `replace` is not available on this path yet: cancel, then issue again.
+- **Replacing is a new DPS with a `subst` group** that names the old invoice's access key.
+  `client.replace(accessKey, invoice, "01", "justification")` or `nfse replace --key K --reason 01
+  --dps N …`. Reasons: `01` leaving the Simples, `02` entering it, `03` retroactive immunity or
+  exemption added, `04` removed, `05` rejection by the taker or intermediary responsible for the
+  tax, `99` other; the justification is optional, 15 to 255 characters. The SEFIN then records
+  the replacement cancellation (event 105102) on the old invoice. For ME/EPP the catalog says
+  the competence, taker and value may not change in some cases (E0060 to E0063). Not yet
+  accepted by the live SEFIN in a real replacement.
 
 ## Issuing many invoices
 

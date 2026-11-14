@@ -26,6 +26,7 @@ import {
   parseNationalNfse,
   type NationalCancellationReason,
   type NationalNfse,
+  type Replacement,
 } from "../providers/nacional/messages.ts";
 import type { Nfse, QueryResult } from "../providers/giss/messages/parser.ts";
 import { NfseClient, type NationalInvoiceInput } from "../client.ts";
@@ -138,6 +139,8 @@ NATIONAL ISSUER (Sistema Nacional NFS-e — mandatory for Simples from 2026-11-0
   national-docs [--from NSU]                        Invoices and events where your CNPJ appears
   manifest --key K --as taker --action confirm|reject [--reason N --text T] [--confirm]
                                                     Confirm or reject an invoice as provider, taker or intermediary
+  replace --key K --reason 01..05|99 [--text T] --customer … --amount … --dps N [--confirm]
+                                                    Issue an invoice that replaces another (national)
   issue-batch --file notas.json [--confirm] [--concurrency N] [--per-second N]
                                                     Issue many invoices from a JSON array (safe to repeat)
   national-rates --item 01.09.02.001 [--date D]     The city's ISS rate and special regimes for a service
@@ -707,6 +710,7 @@ function resolveIssuer(
     return { issuer: values.key ? "nacional" : "giss", source: "automatic" };
   }
   if (command === "replace") {
+    if (values.key) return { issuer: "nacional", source: "automatic" };
     let optant = false;
     try {
       optant = new ProfileRepository().load().simplesNacionalOptant === 1;
@@ -1018,13 +1022,40 @@ async function runNationalCommand(
       return true;
     }
 
-    case "replace":
-      if (viaNational) {
-        throw new Error(
-          "replace is not available on the national issuer yet: cancel, then issue again",
-        );
+    case "replace": {
+      if (!viaNational) return false;
+      const accessKey = key();
+      if (!values.reason) {
+        throw new ValidationError("Provide --reason 01 to 05 or 99 (why the invoice is replaced)");
       }
-      return false;
+      const reason = values.reason.padStart(2, "0") as Replacement["reason"];
+      const rps = buildRpsFromCli(values);
+      const profile = new ProfileRepository().load();
+      const number = values.dps ?? String(Math.floor(Date.now() / 1000));
+      const issueOptions = {
+        series: values.series ?? profile.nationalSeries ?? "1",
+        number,
+        simplesOption: profile.simplesOption ?? (rps.simplesNacionalOptant === 1 ? 3 : 1),
+        simplesApportionment: profile.simplesApportionment,
+        replaces: { accessKey, reason, justification: values.text },
+      } as const;
+
+      if (!values.confirm) {
+        const preview = national.previewDps(rps, issueOptions);
+        if (values.xml) return void console.log(preview), true;
+        console.log(`Would replace ${accessKey} (reason ${reason}) with:\n`);
+        console.log(issueSummary(values, rps));
+        console.log(`DPS:           ${number} series ${issueOptions.series}`);
+        console.log("\nNothing was sent. Repeat with --confirm to actually replace.");
+        return true;
+      }
+      if (!values.dps) console.log(`DPS ${number} (generated). Pass --dps ${number} to retry safely.`);
+      const outcome = await national.issue(rps, issueOptions);
+      console.log(outcome.status === "already-issued" ? "This DPS had already been issued:" : "Replacement issued:");
+      printNational(outcome.nfse, values);
+      for (const alert of outcome.alerts) console.log(`⚠ [${alert.code}] ${alert.message}`);
+      return true;
+    }
 
     default:
       return false;

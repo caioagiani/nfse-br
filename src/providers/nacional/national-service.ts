@@ -24,6 +24,7 @@ import {
   parseNationalNfse,
   type DpsContext,
   type ManifestationInput,
+  type Replacement,
   type NationalEvent,
   type NationalCancellationReason,
   type NationalEnvironment,
@@ -83,6 +84,8 @@ export interface NationalIssueOptions {
   number: string | number;
   simplesOption: SimplesOption;
   simplesApportionment?: 1 | 2 | 3;
+  /** A nota nova substitui outra: o grupo `subst` da DPS */
+  replaces?: Replacement;
 }
 
 export interface NationalIssueOutcome {

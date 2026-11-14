@@ -109,6 +109,7 @@ export type {
   DpsContext,
   NationalCancellationReason,
   ManifestationRole,
+  Replacement,
   RejectionReason,
   NationalEnvironment,
   NationalNfse,

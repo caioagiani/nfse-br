@@ -17,7 +17,7 @@ import {
   type NationalIssueOptions,
   type NationalIssueOutcome,
 } from "./providers/nacional/national-service.ts";
-import type { NationalCancellationReason } from "./providers/nacional/messages.ts";
+import type { NationalCancellationReason, Replacement } from "./providers/nacional/messages.ts";
 import {
   buildRps,
   DEFAULT_PROFILE,
@@ -251,6 +251,21 @@ export class NfseClient {
   /** Cancela uma nota nacional pela chave de acesso (evento 101101). */
   cancel(accessKey: string, reason: NationalCancellationReason, justification: string) {
     return this.national.cancel(accessKey, reason, justification);
+  }
+
+  /**
+   * Emite uma nota que substitui outra, pela chave dela (grupo `subst` da DPS). A SEFIN
+   * registra o cancelamento por substituição (evento 105102) na nota antiga. Para ME/EPP,
+   * competência, tomador e valor não podem mudar em alguns casos (E0060 a E0063).
+   */
+  replace(
+    accessKey: string,
+    invoice: NationalInvoiceInput,
+    reason: Replacement["reason"],
+    justification?: string,
+  ): Promise<NationalIssueOutcome> {
+    const { rps, dps } = this.#compose(invoice);
+    return this.national.issue(rps, { ...dps, replaces: { accessKey, reason, justification } });
   }
 
   /** Confirma ou rejeita uma nota como prestador, tomador ou intermediário (eventos de manifestação). */

@@ -127,7 +127,7 @@ _nfse() {
             '--confirm[Actually cancel it]'
           ;;
         replace)
-          _arguments $global_opts '--number[Invoice number]:number:' \
+          _arguments $global_opts '--key[National: access key of the invoice to replace]:key:' '--dps[National: DPS number]:number:' '--text[National: justification]:text:' '--number[Invoice number]:number:' \
             '--reason[Cancellation reason]:reason:(1 2 3 4 5)' \
             '--customer[Tax id or alias]:customer:' '--amount[Service amount]:amount:' \
             '--description[Service description]:text:' '--confirm[Actually replace it]'
