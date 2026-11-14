@@ -1,5 +1,11 @@
 # Municipalities
 
+> **Deprecated.** GissOnline is the legacy municipal system. Since 2026-11-01 a Simples
+> Nacional optant (ME/EPP) can no longer issue through it (Res. CGSN 191/2026); the
+> [national issuer](national.md) is the default and the way forward. This page stays
+> because the Web Services still answer queries and still issue for taxpayers outside the
+> Simples. It receives fixes, not new features.
+
 The Web Service is the same in every city that runs GissOnline — same 16
 operations, same WSDL, same signature. Only the host changes:
 `ws-<slug>.giss.com.br`.

@@ -67,12 +67,12 @@ export interface NationalInvoiceInput
 }
 
 /**
- * Fachada sobre os dois Web Services SOAP.
+ * Fachada do pacote.
  *
- * Carrega o certificado uma vez, monta o assinador e entrega os serviços
- * `nfse` (serviços prestados) e `nfsc` (serviços tomados) já configurados.
- * O cadastro de participantes não passa por aqui — vive na API REST do portal,
- * em `PortalService`.
+ * Carrega o certificado uma vez, monta o assinador e entrega o Sistema Nacional
+ * NFS-e (`national`, `issue`, `previewIssue`, `cancel`) e, como legado, os
+ * Web Services SOAP do GissOnline (`nfse`, `nfsc`). O cadastro de participantes
+ * do GissOnline não passa por aqui — vive na API REST do portal, em `PortalService`.
  */
 /** Marca a config quando o certificado não veio de um arquivo. */
 const MEMORY_CERTIFICATE = "<in-memory>";
@@ -83,9 +83,17 @@ export class NfseClient {
   /** Sistema Nacional NFS-e — o emissor principal. Mesmo certificado, assinatura SHA-256 */
   readonly national: NationalService;
   readonly #profile: IssuingProfile;
-  /** GissOnline, serviços prestados (SOAP). Legado: o Simples Nacional não emite mais por ele */
+  /**
+   * GissOnline, serviços prestados (SOAP).
+   * @deprecated Legado. Desde 01/11/2026 o Simples Nacional (ME/EPP) não emite mais pelo
+   * GissOnline (Res. CGSN 191/2026): use `issue`, `previewIssue` e `cancel`, ou `national`.
+   * Segue funcionando para consultas e para quem está fora do Simples; recebe só correções.
+   */
   readonly nfse: NfseService;
-  /** GissOnline, serviços tomados (SOAP) */
+  /**
+   * GissOnline, serviços tomados (SOAP).
+   * @deprecated Legado, junto com `nfse`: o GissOnline é substituído pelo Sistema Nacional NFS-e.
+   */
   readonly nfsc: NfscService;
 
   constructor(options: NfseClientOptions = {}) {

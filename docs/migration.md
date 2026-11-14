@@ -25,6 +25,20 @@ name, the layout of the repository, the errors and the default issuer.
 5. **Error handling by text.** See below.
 6. **XSD paths.** Only if you pointed `validateAgainstSchema` at the old folders.
 
+## GissOnline is deprecated
+
+The GissOnline code (`client.nfse`, `client.nfsc`, `PortalService`, `--issuer giss`) is
+kept and still works, but it is legacy:
+
+- Since **2026-11-01** a Simples Nacional optant (ME/EPP) can no longer issue through it
+  (Res. CGSN 191/2026). For them the national issuer is the only way.
+- It keeps answering queries and issuing for taxpayers outside the Simples, in the 32
+  cities listed in [municipalities.md](municipalities.md).
+- It receives bug fixes, not new features. New work goes to the national issuer.
+- `client.nfse` and `client.nfsc` are marked `@deprecated`, so editors strike them through;
+  nothing is removed, and the CLI prints a notice on stderr when it issues through
+  GissOnline.
+
 ## What changed
 
 | 1.x | 2.x |

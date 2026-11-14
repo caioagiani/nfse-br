@@ -120,7 +120,7 @@ invoice already accepted by the city hall, with the formats corrected for sendin
 **Check them with your accountant before issuing** — the defaults describe a Simples
 Nacional provider, ISS not withheld, service item 01.04.
 
-## Test environment
+## Test environment (GissOnline)
 
 The Services Provided manual v1.6 announces `ws-homologacao.giss.com.br`, but that host
 only serves the Angular portal (`405` on POST). The SOAP environment that answers is the

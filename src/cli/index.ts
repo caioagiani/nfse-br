@@ -151,7 +151,7 @@ TAX PROFILE
 
 Global options:
   --env producao|homologacao   Environment (default: GISS_ENV from .env)
-  --issuer giss|nacional       Who issues (default: NFSE_EMISSOR; else nacional for issue, by argument for cancel)
+  --issuer giss|nacional       Who issues; giss is deprecated (default: NFSE_EMISSOR; else nacional for issue, by argument for cancel)
   --json | --xml | --debug     Output format / diagnostics
 `;
 
@@ -282,6 +282,7 @@ async function main() {
   warnCertificateExpiry(client.certificate);
 
   if (await runNationalCommand(command, values, client)) return;
+  warnGissDeprecated(command);
   const asNumber = (v: string | undefined) => (v === undefined ? undefined : Number(v));
 
   switch (command) {
@@ -626,6 +627,21 @@ function warnCertificateExpiry(certificate: Certificate, now = new Date()): void
   console.error(
     `⚠ The A1 certificate expires in ${days} day(s), on ${isoDate(certificate.validTo)}. ` +
       "Renew it before then: an expired certificate stops every request.\n",
+  );
+}
+
+const GISS_WRITE_COMMANDS = new Set(["issue", "cancel", "replace"]);
+
+/**
+ * O GissOnline é legado. Só as operações que emitem, cancelam ou substituem avisam:
+ * consulta não muda o que o usuário faz, e o aviso vai para stderr para não sujar
+ * a saída de `--xml`/`--json`.
+ */
+function warnGissDeprecated(command: string): void {
+  if (!GISS_WRITE_COMMANDS.has(command)) return;
+  console.error(
+    "⚠ GissOnline is deprecated: the national issuer is the default and the only one for the " +
+      "Simples Nacional since 2026-11-01. See docs/migration.md.\n",
   );
 }
 
