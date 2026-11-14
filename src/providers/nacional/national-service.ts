@@ -1,5 +1,10 @@
 import type { Environment } from "../../config/index.ts";
-import { NationalError, NfseError, type ServiceMessage } from "../../domain/errors.ts";
+import {
+  NationalError,
+  NfseError,
+  ValidationError,
+  type ServiceMessage,
+} from "../../domain/errors.ts";
 import type { XmlSigner } from "../../domain/signature-policy.ts";
 import type { Rps } from "../../domain/types.ts";
 import type { Certificate } from "../../infra/certificate.ts";
@@ -23,6 +28,7 @@ import {
   type NationalNfse,
   type SimplesOption,
 } from "./messages.ts";
+import { isoDate } from "../../infra/xml.ts";
 import { danfseStatus } from "./danfse/danfse-data.ts";
 import { renderDanfse } from "./danfse/danfse-pdf.ts";
 
@@ -41,6 +47,25 @@ export const NATIONAL_HOSTS = {
     adn: "https://adn.producaorestrita.nfse.gov.br",
   },
 } as const;
+
+/** Uma faixa de vigência da alíquota do ISS de um serviço no município. */
+export interface ServiceRate {
+  /** "SIM" quando o serviço sofre incidência no município */
+  incidence?: string;
+  /** Alíquota do município, em %. O Simples recolhe pela do anexo (DAS), não por esta. */
+  rate?: number;
+  from: string;
+  to?: string;
+}
+
+/** Um regime especial de tributação do serviço no município. */
+export interface SpecialRegime {
+  /** Situação da configuração no município (1, 2 ou 3, como a API publica) */
+  status: number;
+  from: string;
+  to?: string;
+  notes?: string;
+}
 
 /** Adesão do município ao Sistema Nacional, como o ADN a publica. */
 export interface MunicipalAgreement {
@@ -115,6 +140,77 @@ export class NationalService {
       usesNationalIssuer: raw["aderenteEmissorNacional"] === 1,
       raw,
     };
+  }
+
+  /**
+   * Alíquotas do ISS de um serviço no município, vigentes na competência (hoje, por padrão).
+   * `null` quando o município não parametrizou o serviço: emitir com ele seria rejeitado,
+   * então vale consultar antes. `serviceCode` é o código completo, com os 3 dígitos do
+   * município: `01.09.02.001` ou `010902001`.
+   */
+  async serviceRates(
+    serviceCode: string,
+    competence: Date | string = new Date(),
+    cityCode = this.options.cityCode,
+  ): Promise<ServiceRate[] | null> {
+    const code = parameterServiceCode(serviceCode);
+    const body = await this.parameter<{ aliquotas?: Record<string, RawRate[]> | null }>(
+      `${cityCode}/${code}/${isoDate(competence)}/aliquota`,
+    );
+    const list = body?.aliquotas?.[code];
+    return list ? list.map(toServiceRate) : null;
+  }
+
+  /** Todas as faixas de alíquota que o município já teve para o serviço; `null` se não o parametrizou. */
+  async serviceRateHistory(
+    serviceCode: string,
+    cityCode = this.options.cityCode,
+  ): Promise<ServiceRate[] | null> {
+    const code = parameterServiceCode(serviceCode);
+    const body = await this.parameter<{ aliquotas?: Record<string, RawRate[]> | null }>(
+      `${cityCode}/${code}/historicoaliquotas`,
+    );
+    const list = body?.aliquotas?.[code];
+    return list ? list.map(toServiceRate) : null;
+  }
+
+  /** Regimes especiais de tributação do serviço na competência; `null` se o município não tem nenhum. */
+  async specialRegimes(
+    serviceCode: string,
+    competence: Date | string = new Date(),
+    cityCode = this.options.cityCode,
+  ): Promise<SpecialRegime[] | null> {
+    const code = parameterServiceCode(serviceCode);
+    const body = await this.parameter<{
+      regimesEspeciais?: Record<string, Record<string, RawRegime[]>> | null;
+    }>(`${cityCode}/${code}/${isoDate(competence)}/regimes_especiais`);
+    const groups = body?.regimesEspeciais?.[code];
+    if (!groups) return null;
+    return Object.values(groups)
+      .flat()
+      .map((r) => ({ status: r.situacao, from: r.dataInicio, to: r.dataFim ?? undefined, notes: r.observacoes ?? undefined }));
+  }
+
+  /**
+   * Retenções de ISS que o município determina na competência, como a API as publica
+   * (artigo sexto e retenções por código de serviço).
+   */
+  async withholdings(
+    competence: Date | string = new Date(),
+    cityCode = this.options.cityCode,
+  ): Promise<Record<string, unknown> | null> {
+    const body = await this.parameter<{ retencoes?: Record<string, unknown> | null }>(
+      `${cityCode}/${isoDate(competence)}/retencoes`,
+    );
+    return body?.retencoes ?? null;
+  }
+
+  /** GET na API de parâmetros do ADN; o 404 daqui quer dizer "não parametrizado", não falha. */
+  private async parameter<T>(route: string): Promise<T | null> {
+    const url = `${this.hosts.adn}/parametrizacao/${route}`;
+    const response = await this.call(url);
+    if (response.status === 404) return null;
+    return this.unwrap<T>(url, response);
   }
 
   /** DPS montada e assinada, sem enviar — para conferência e validação. */
@@ -323,6 +419,41 @@ export class NationalService {
   private log(label: string, content: string): void {
     if (this.options.debug) console.error(`\n--- ${label} ---\n${content}`);
   }
+}
+
+interface RawRate {
+  Incidencia?: string;
+  Aliq?: number;
+  DtIni: string;
+  DtFim?: string | null;
+}
+interface RawRegime {
+  situacao: number;
+  dataInicio: string;
+  dataFim?: string | null;
+  observacoes?: string | null;
+}
+
+const toServiceRate = (raw: RawRate): ServiceRate => ({
+  incidence: raw.Incidencia,
+  rate: raw.Aliq,
+  from: raw.DtIni,
+  to: raw.DtFim ?? undefined,
+});
+
+/**
+ * A API de parâmetros pede o código completo do serviço com pontos, como
+ * `01.09.02.001`: seis dígitos nacionais mais três do município. Sem os pontos ou
+ * só com seis dígitos ela responde "o código deve ter nove dígitos".
+ */
+export function parameterServiceCode(code: string): string {
+  const digits = code.replace(/\D/g, "");
+  if (digits.length !== 9) {
+    throw new ValidationError(
+      `Código de serviço com 9 dígitos (6 nacionais + 3 do município, ex.: 01.09.02.001): recebi "${code}"`,
+    );
+  }
+  return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4, 6)}.${digits.slice(6)}`;
 }
 
 /** A API alterna `Codigo`/`codigo` e lista/objeto único conforme a rota. */

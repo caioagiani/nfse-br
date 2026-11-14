@@ -219,3 +219,27 @@ Schemas: `schemas/nacional/` holds the official production XSD v1.01 (2026-02-09
 <https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual>.
 Do not confuse it with **NFS-e Via**, a separate layout used only for road tolls (service
 `220101`).
+
+## Municipal parameters: check before issuing
+
+The ADN publishes what the city has parameterised, and a service the city did not
+parameterise is refused. Asking first turns a rejection into a clear answer:
+
+```ts
+const rates = await client.national.serviceRates("01.09.02.001");   // null: not parameterised
+const regimes = await client.national.specialRegimes("01.09.02.001");
+const history = await client.national.serviceRateHistory("01.09.02.001");
+const withholdings = await client.national.withholdings();          // the city's ISS withholding rules
+```
+
+```bash
+nfse national-rates --item 01.09.02.001
+```
+
+- **The code has nine digits**: the six of the national code plus three of the city
+  (`01.09.02.001`). The API refuses anything else, so does `parameterServiceCode`.
+- **404 is "not parameterised"**, and comes back as `null`, not as an error.
+- **The rate is the city's.** An ME/EPP in the Simples pays by the annex (the DAS) and does
+  not send `pAliq`; the municipal rate matters for withholding and for other regimes.
+  Suzano answers 4% for `01.09.02.001`, checked live on 2026-11-14.
+- The routes are in the ADN's swagger at `/parametrizacao/swagger/v1/swagger.json`.

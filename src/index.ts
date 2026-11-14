@@ -72,13 +72,15 @@ export {
 export { NfseService } from "./providers/giss/nfse-service.ts";
 export type { IssueOutcome } from "./providers/giss/nfse-service.ts";
 export { NfscService } from "./providers/giss/nfsc-service.ts";
-export { NationalService, NATIONAL_HOSTS } from "./providers/nacional/national-service.ts";
+export { NationalService, NATIONAL_HOSTS, parameterServiceCode } from "./providers/nacional/national-service.ts";
 export type {
   DistributedDocument,
   MunicipalAgreement,
   NationalIssueOptions,
   NationalIssueOutcome,
   NationalServiceOptions,
+  ServiceRate,
+  SpecialRegime,
 } from "./providers/nacional/national-service.ts";
 export {
   buildDps,

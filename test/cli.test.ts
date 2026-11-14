@@ -180,3 +180,22 @@ describe("CLI — fluxo offline com certificado de teste", () => {
     assert.doesNotMatch(replace.stderr, /not available on the national issuer/);
   });
 });
+
+describe("CLI — national-rates", () => {
+  const cli = resolve("src/cli/index.ts");
+  it("exige --item antes de qualquer chamada", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "nfse-cli-rates-"));
+    writeFileSync(join(cwd, "cert.pfx"), testPfx("segredo"));
+    const env = {
+      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(GISS_|CERT_|NFSE_)/.test(k))),
+      CERT_PATH: "cert.pfx",
+      CERT_PASSWORD: "segredo",
+      GISS_CNPJ: PROVIDER_CNPJ,
+      GISS_ISC_MUNICIPAL: "53624",
+    };
+    const run = spawnSync(process.execPath, [cli, "national-rates"], { cwd, env, encoding: "utf8" });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /--item/);
+    assert.match(run.stderr, /code: VALIDATION/);
+  });
+});
