@@ -1,3 +1,10 @@
+# [2.5.0-next.4](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.3...v2.5.0-next.4) (2026-11-14)
+
+
+### Features
+
+* **nacional:** confirm or reject an invoice (manifestation events) ([#45](https://github.com/[secure]/nfse-br/issues/45)) ([1d8d185](https://github.com/[secure]/nfse-br/commit/1d8d18501b7720134a7f3239b2d3234ac26c5c53))
+
 # [2.5.0-next.3](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.2...v2.5.0-next.3) (2026-11-14)
 
 
