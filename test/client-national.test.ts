@@ -218,3 +218,19 @@ describe("NfseClient — exportação de serviço", () => {
     assert.match(xml, /<tribISSQN>3<\/tribISSQN>/);
   });
 });
+
+describe("NfseClient — replace", () => {
+  it("emite a nota nova com a chave da antiga, o motivo e a justificativa", async () => {
+    const c = client();
+    const calls: unknown[][] = [];
+    c.national.issue = (async (...args: unknown[]) => (calls.push(args), { status: "issued" })) as never;
+    await c.replace("7".repeat(50), invoice({ number: 12 }), "02", "Enquadramento no Simples retroativo");
+    const dps = calls[0]![1] as { number: number; replaces: unknown };
+    assert.equal(dps.number, 12);
+    assert.deepEqual(dps.replaces, {
+      accessKey: "7".repeat(50),
+      reason: "02",
+      justification: "Enquadramento no Simples retroativo",
+    });
+  });
+});

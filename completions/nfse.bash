@@ -42,7 +42,7 @@ national-pdf national-xml national-docs national-rates issue-batch manifest danf
     issue)           opts="--customer --amount --description --competence --rps --series \
 --item --cnae --nbs --rate --csll --inss --income-tax --notes --confirm" ;;
     cancel)          opts="--number --reason --confirm" ;;
-    replace)         opts="--number --reason --customer --amount --description --confirm" ;;
+    replace)         opts="--number --key --dps --text --reason --customer --amount --description --confirm" ;;
     customers|suppliers) opts="--sync --from --to" ;;
     customer-add|supplier-add|portal-add)
       opts="--tax-id --name --alias --registration --email --phone --trade-name \

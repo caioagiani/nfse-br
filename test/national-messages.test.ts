@@ -426,3 +426,49 @@ describe("buildDps — tomador no exterior e comExt", () => {
     });
   }
 });
+
+describe("buildDps — substituição de nota", () => {
+  const key = "35525022379692490001100000000000052926030000000004".slice(0, 50);
+  const base = { accessKey: key, reason: "01" as const };
+
+  it("o grupo subst vem depois do cLocEmi e antes do prestador", () => {
+    const xml = buildDps(sampleRps(), { ...context, replaces: { ...base, justification: "Desenquadramento do Simples em 2026" } });
+    assert.match(
+      xml,
+      new RegExp(`<cLocEmi>${SUZANO}</cLocEmi><subst><chSubstda>${key}</chSubstda><cMotivo>01</cMotivo><xMotivo>Desenquadramento do Simples em 2026</xMotivo></subst><prest>`),
+    );
+  });
+
+  it("a justificativa é opcional", () => {
+    const xml = buildDps(sampleRps(), { ...context, replaces: base });
+    assert.match(xml, /<subst><chSubstda>\d{50}<\/chSubstda><cMotivo>01<\/cMotivo><\/subst>/);
+  });
+
+  it("valida contra o XSD nacional", () => {
+    const result = validateAgainstSchema(
+      buildDps(sampleRps(), { ...context, environment: 1, replaces: { ...base, justification: "Desenquadramento do Simples em 2026" } }),
+      "DPS_v1.01.xsd",
+      SCHEMA_DIRECTORIES.national,
+    );
+    if (result === null) return;
+    assert.deepEqual(result.errors, []);
+  });
+
+  const invalid: [string, object, RegExp][] = [
+    ["chave curta", { accessKey: "123" }, /50 dígitos/],
+    ["motivo fora da tabela", { reason: "07" }, /Motivo da substituição/],
+    ["justificativa curta", { justification: "curta" }, /15 a 255/],
+  ];
+  for (const [name, change, pattern] of invalid) {
+    it(`recusa ${name}`, () => {
+      assert.throws(
+        () => buildDps(sampleRps(), { ...context, replaces: { ...base, ...change } as never }),
+        (error: unknown) => error instanceof ValidationError && pattern.test(error.message),
+      );
+    });
+  }
+
+  it("sem replaces, a DPS não leva subst", () => {
+    assert.doesNotMatch(buildDps(sampleRps(), context), /<subst>/);
+  });
+});
