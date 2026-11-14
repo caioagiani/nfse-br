@@ -62,6 +62,10 @@
     "url": "git+https://github.com/caioagiani/nfse-br.git"
   },
   "homepage": "https://github.com/caioagiani/nfse-br#readme",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/caioagiani"
+  },
   "bugs": {
     "url": "https://github.com/caioagiani/nfse-br/issues"
   },
