@@ -1,3 +1,10 @@
+# [2.5.0-next.2](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.1...v2.5.0-next.2) (2026-11-14)
+
+
+### Features
+
+* **nacional:** issueMany and issue-batch with rate limits ([#43](https://github.com/[secure]/nfse-br/issues/43)) ([c7519e2](https://github.com/[secure]/nfse-br/commit/c7519e2b5b8c4c924aa6d85a85b03ff64308a48a))
+
 # [2.5.0-next.1](https://github.com/[secure]/nfse-br/compare/v2.4.1...v2.5.0-next.1) (2026-11-14)
 
 
