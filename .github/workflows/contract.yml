@@ -1,0 +1,40 @@
+name: Contract tests
+
+# Talks to the national NFS-e homologation environment (producaorestrita) with a
+# real A1 certificate. Read-only: nothing is issued. Manual on purpose — it needs
+# a secret and depends on a government service being up, so it must not block PRs.
+#
+# Secrets: CONTRACT_CERT_PFX_B64 (the .pfx, base64) and CONTRACT_CERT_PASSWORD.
+# Variables: CONTRACT_CNPJ and CONTRACT_IM (the taxpayer the certificate belongs to).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1" # Mondays: catches a contract change before a user does
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.CONTRACT_CNPJ != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Write the certificate
+        run: |
+          mkdir -p "$RUNNER_TEMP/cert"
+          echo "$CERT_B64" | base64 -d > "$RUNNER_TEMP/cert/contract.pfx"
+          echo "CERT_PATH=$RUNNER_TEMP/cert/contract.pfx" >> "$GITHUB_ENV"
+        env:
+          CERT_B64: ${{ secrets.CONTRACT_CERT_PFX_B64 }}
+      - run: npm run test:contract
+        env:
+          CERT_PASSWORD: ${{ secrets.CONTRACT_CERT_PASSWORD }}
+          GISS_CNPJ: ${{ vars.CONTRACT_CNPJ }}
+          GISS_ISC_MUNICIPAL: ${{ vars.CONTRACT_IM }}
+          GISS_ENV: homologacao
