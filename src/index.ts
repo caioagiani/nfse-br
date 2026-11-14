@@ -36,6 +36,8 @@ export * from "./domain/types.ts";
 export * from "./domain/signature-policy.ts";
 
 export { loadCertificate, exportPem } from "./infra/certificate.ts";
+export { CertificatePool } from "./infra/certificate-pool.ts";
+export type { CertificatePoolOptions, CertificatePoolStats, CertificateSource } from "./infra/certificate-pool.ts";
 export type {
   Certificate,
   CertificateInput,
@@ -57,6 +59,8 @@ export { NfseClient, GissClient } from "./client.ts";
 export type {
   NfseClientOptions,
   GissClientOptions,
+  IssueManyOptions,
+  IssueManyResult,
   NationalInvoiceInput,
   SoapExchange,
 } from "./client.ts";
@@ -78,6 +82,7 @@ export type {
   MunicipalAgreement,
   NationalIssueOptions,
   NationalIssueOutcome,
+  NationalHosts,
   NationalServiceOptions,
   ServiceRate,
   SpecialRegime,
@@ -105,6 +110,9 @@ export type { DanfseData, DanfseStatus } from "./providers/nacional/danfse/danfs
 export type {
   DpsContext,
   NationalCancellationReason,
+  ManifestationRole,
+  Replacement,
+  RejectionReason,
   NationalEnvironment,
   NationalNfse,
   NationalEvent,

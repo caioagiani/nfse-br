@@ -18,10 +18,13 @@ import {
 import {
   buildCancellationEvent,
   buildDps,
+  buildManifestationEvent,
   dpsId,
   parseNationalEvent,
   parseNationalNfse,
   type DpsContext,
+  type ManifestationInput,
+  type Replacement,
   type NationalEvent,
   type NationalCancellationReason,
   type NationalEnvironment,
@@ -81,6 +84,8 @@ export interface NationalIssueOptions {
   number: string | number;
   simplesOption: SimplesOption;
   simplesApportionment?: 1 | 2 | 3;
+  /** A nota nova substitui outra: o grupo `subst` da DPS */
+  replaces?: Replacement;
 }
 
 export interface NationalIssueOutcome {
@@ -114,15 +119,26 @@ export interface NationalServiceOptions {
   debug?: boolean;
   /** Substitui o transporte HTTPS — para testes, ou para passar por um proxy */
   transport?: typeof callNational;
+  /**
+   * Outros endereços no lugar dos oficiais do ambiente — um proxy corporativo, um
+   * servidor de testes. O certificado do cliente vai a quem estiver lá: só aponte
+   * para um destino em que você confie.
+   */
+  hosts?: NationalHosts;
+}
+
+export interface NationalHosts {
+  sefin: string;
+  adn: string;
 }
 
 export class NationalService {
-  readonly hosts: (typeof NATIONAL_HOSTS)[Environment];
+  readonly hosts: NationalHosts;
   private readonly options: NationalServiceOptions;
 
   constructor(options: NationalServiceOptions) {
     this.options = options;
-    this.hosts = NATIONAL_HOSTS[options.environment];
+    this.hosts = options.hosts ?? NATIONAL_HOSTS[options.environment];
   }
 
   get environmentCode(): NationalEnvironment {
@@ -341,9 +357,31 @@ export class NationalService {
       reason,
       justification,
     });
+    return this.registerEvent(accessKey, 101101, event);
+  }
+
+  /**
+   * Manifesta-se sobre uma nota: confirma ou rejeita, como prestador, tomador ou
+   * intermediário. O CNPJ do certificado precisa ser o dessa parte na nota; a SEFIN
+   * recusa o resto. Devolve o XML do evento registrado.
+   */
+  async manifest(
+    accessKey: string,
+    options: Omit<ManifestationInput, "environment" | "cnpj" | "accessKey">,
+  ): Promise<string> {
+    const { xml, eventCode } = buildManifestationEvent({
+      ...options,
+      environment: this.environmentCode,
+      cnpj: this.options.cnpj,
+      accessKey,
+    });
+    return this.registerEvent(accessKey, eventCode, xml);
+  }
+
+  private async registerEvent(accessKey: string, eventCode: number, event: string): Promise<string> {
     const signed = this.options.signer.sign(event, {
       referenceXPath: "//*[local-name(.)='infPedReg']",
-      id: `PRE${accessKey}101101`,
+      id: `PRE${accessKey}${eventCode}`,
       targetXPath: "/*",
     });
     this.log("pedRegEvento", signed);
@@ -376,6 +414,43 @@ export class NationalService {
       type: d.TipoDocumento,
       xml: unpackXml(d.ArquivoXml),
     }));
+  }
+
+  /**
+   * Notas que **outros emitiram contra o seu CNPJ** (serviços tomados), lidas da
+   * distribuição do ADN a partir de um NSU. Devolve também `nextNsu`: guarde-o e
+   * passe como `fromNsu` na próxima chamada para ler só o que é novo.
+   *
+   * Cada página da distribuição traz até 50 documentos, entre notas e eventos, emitidos
+   * e recebidos; aqui só ficam as notas em que o tomador é o certificado e o emitente é
+   * outro. `maxPages` limita a leitura de uma vez (padrão 20, mil documentos): se
+   * parou no limite, `complete` é falso e `nextNsu` continua de onde parou.
+   */
+  async received(
+    fromNsu = 0,
+    { maxPages = 20 }: { maxPages?: number } = {},
+  ): Promise<{ invoices: NationalNfse[]; nextNsu: number; complete: boolean }> {
+    const own = digitsOnly(this.options.cnpj);
+    const invoices: NationalNfse[] = [];
+    let cursor = fromNsu;
+    for (let page = 0; page < maxPages; page++) {
+      const batch = await this.distribution(cursor);
+      if (batch.length === 0) return { invoices, nextNsu: cursor, complete: true };
+      for (const document of batch) {
+        if (document.type !== "NFSE") continue;
+        let nfse: NationalNfse;
+        try {
+          nfse = parseNationalNfse(document.xml);
+        } catch {
+          continue;
+        }
+        if (digitsOnly(nfse.takerTaxId ?? "") === own && digitsOnly(nfse.issuerCnpj ?? "") !== own) {
+          invoices.push(nfse);
+        }
+      }
+      cursor = Math.max(...batch.map((d) => d.nsu)) + 1;
+    }
+    return { invoices, nextNsu: cursor, complete: false };
   }
 
   private signDps(rps: Rps, options: NationalIssueOptions): { id: string; xml: string } {

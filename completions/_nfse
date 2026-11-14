@@ -50,7 +50,10 @@ _nfse() {
     'national-pdf:Download the DANFSe'
     'national-xml:Download the national invoice XML'
     'national-docs:Invoices and events where your CNPJ appears'
+    'national-received:Invoices others issued against your CNPJ'
     'national-rates:The city ISS rate and special regimes for a service'
+    'issue-batch:Issue many national invoices from a JSON file'
+    'manifest:Confirm or reject an invoice as provider, taker or intermediary'
     'danfse:DANFSe from a saved national XML (offline)'
   )
 
@@ -125,7 +128,7 @@ _nfse() {
             '--confirm[Actually cancel it]'
           ;;
         replace)
-          _arguments $global_opts '--number[Invoice number]:number:' \
+          _arguments $global_opts '--key[National: access key of the invoice to replace]:key:' '--dps[National: DPS number]:number:' '--text[National: justification]:text:' '--number[Invoice number]:number:' \
             '--reason[Cancellation reason]:reason:(1 2 3 4 5)' \
             '--customer[Tax id or alias]:customer:' '--amount[Service amount]:amount:' \
             '--description[Service description]:text:' '--confirm[Actually replace it]'
@@ -182,8 +185,17 @@ _nfse() {
         national-docs)
           _arguments $global_opts '--from[Start after this NSU]:nsu:'
           ;;
+        national-received)
+          _arguments $global_opts '--from[Start after this NSU]:nsu:'
+          ;;
         national-rates)
           _arguments $global_opts '--item[Service, e.g. 01.09.02.001]:service:' '--date[Competence date]:date:'
+          ;;
+        manifest)
+          _arguments $global_opts '--key[Access key]:key:' '--as[Your role]:role:(provider taker intermediary)' '--action[Action]:action:(confirm reject)' '--reason[Rejection reason]:reason:(1 2 3 4 5 9)' '--text[Justification]:text:' '--confirm[Register the event]'
+          ;;
+        issue-batch)
+          _arguments $global_opts '--file[JSON array of invoices]:file:_files -g "*.json"' '--confirm[Actually issue]' '--concurrency[Parallel requests]:n:' '--per-second[Rate limit]:n:'
           ;;
         danfse)
           _arguments $global_opts '*--event[Event XML of the invoice]:event:_files -g "*.xml"' \
