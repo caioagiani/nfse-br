@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { PDFDict, PDFDocument, PDFName } from "pdf-lib";
+import { PDFDict, PDFDocument, PDFName } from "@cantoo/pdf-lib";
 import { ValidationError } from "../src/domain/errors.ts";
 import { buildDanfseData, clip, danfseStatus } from "../src/providers/nacional/danfse/danfse-data.ts";
 import { renderDanfse } from "../src/providers/nacional/danfse/danfse-pdf.ts";
