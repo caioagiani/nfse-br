@@ -31,7 +31,7 @@ Setting it always wins. Left empty, the CLI decides, and says so in the preview:
 | --- | --- |
 | `issue` | **national**, for everyone |
 | `cancel` | **national** with `--key`; GissOnline with `--number` |
-| `replace` | GissOnline, except for a Simples optant after 2026-11-01, who gets the error that says to cancel and issue again |
+| `replace` | the national issuer when you pass `--key` (or for a Simples optant after 2026-11-01); GissOnline with `--number` |
 
 National is the default because it is the country's standard and, since 2026-11-01, the only
 issuer left for the Simples Nacional. A taxpayer who is **not** an ME/EPP apportioned through the
@@ -72,6 +72,7 @@ gets `E0039`. The restricted environment does not apply the exception yet.
 ```bash
 nfse national-status                      # the two flags above
 nfse national-docs [--from NSU]           # invoices and events where your CNPJ appears
+nfse national-received [--from NSU]       # services taken: invoices others issued against you
 nfse national-get --key K                 # one invoice by its 50-digit access key
 nfse national-pdf --key K [--out DIR]     # the DANFSe, generated locally (see below)
 nfse national-xml --key K [--out DIR]
@@ -80,7 +81,24 @@ nfse danfse nfse.xml [--event FILE]... [--out DIR|FILE]   # offline, from a save
 nfse issue --issuer nacional --customer acme --amount 1500 --description "…"
 nfse issue --issuer nacional --customer acme --amount 1500 --description "…" --dps 7 --confirm
 nfse cancel --issuer nacional --key K --reason 1 --text "Valor informado errado" --confirm
+nfse manifest --key K --as taker --action confirm --confirm
+nfse manifest --key K --as taker --action reject --reason 3 --text "Fato gerador não ocorreu" --confirm
 ```
+
+`manifest` registers a confirmation or a rejection as the **provider, taker or
+intermediary** (events 202201/202205, 203202/203206, 204203/204207). The certificate's CNPJ
+must be that party on the invoice, or the SEFIN refuses. Rejection reasons: 1 duplicate,
+2 already issued by the taker, 3 the taxable event did not happen, 4 tax responsibility,
+5 value/service/date, 9 other; `--text` is optional, 15 to 255 characters. In code:
+`client.manifest(accessKey, { role: "taker", action: "reject", reason: 3 })`. The event
+XML is validated against `pedRegEvento_v1.01.xsd` in the tests; it has not been registered
+on the live SEFIN yet.
+
+`national-received` reads the same distribution but keeps only the invoices **others issued
+against your CNPJ** (services taken), and prints `Next NSU`: pass it back in `--from` to read
+only what is new. In code, `client.received(fromNsu)` returns `{ invoices, nextNsu, complete }`;
+store `nextNsu` between runs. `complete: false` means it stopped at the page limit (20 pages
+of up to 50 documents) and the next call continues from there.
 
 `national-docs` already lists the invoices issued through GissOnline: a city that
 shares with the national base forwards them, with their national access key.
@@ -104,7 +122,96 @@ batch and no protocol.
   SHA-256, so the client uses it there.
 - **Cancelling is an event** (`101101`) on the access key, with reason `1` (issuing error),
   `2` (service not provided) or `9` (other) and a justification of 15 to 255 characters.
-  `replace` is not available on this path yet: cancel, then issue again.
+- **Replacing is a new DPS with a `subst` group** that names the old invoice's access key.
+  `client.replace(accessKey, invoice, "01", "justification")` or `nfse replace --key K --reason 01
+  --dps N …`. Reasons: `01` leaving the Simples, `02` entering it, `03` retroactive immunity or
+  exemption added, `04` removed, `05` rejection by the taker or intermediary responsible for the
+  tax, `99` other; the justification is optional, 15 to 255 characters. The SEFIN then records
+  the replacement cancellation (event 105102) on the old invoice. For ME/EPP the catalog says
+  the competence, taker and value may not change in some cases (E0060 to E0063). Not yet
+  accepted by the live SEFIN in a real replacement.
+
+## Validation status
+
+Proved against the production SEFIN/ADN (2026-11-14): single issue, `issueMany` (DPS nº 5, R$ 0,01), cancellation (event 101101), distribution with `cnpjConsulta`, `national-received`, and the E0202 refusal when provider and taker are the same.
+
+Covered by tests and XSD validation only, not yet accepted by the live service: `comExt` with a foreign taker, manifestation events, replacement (`subst`), and issuing as a MEI.
+
+## Issuing many invoices
+
+The national API has no batch endpoint: every DPS is one synchronous `POST /nfse`. `issueMany`
+runs a list of them with a concurrency limit and a rate limit, on top of the same idempotent
+`issue`.
+
+```ts
+const results = await client.issueMany(invoices, {
+  concurrency: 4,        // requests at once (default 4)
+  ratePerSecond: 5,      // optional cap on starts per second
+  retries: 2,            // transient failures only (`error.retryable`), with growing waits
+  onProgress: (done, total, r) => console.log(`${done}/${total} DPS ${r.input.number}: ${r.status}`),
+  signal,                // AbortSignal: what has not started becomes "skipped"
+});
+
+const failed = results.filter((r) => r.status === "failed" || r.status === "skipped");
+```
+
+- **All checked before any is sent.** An invalid invoice, or a DPS number (per series) that
+  appears twice in the list, throws `ValidationError` and nothing is issued. The error
+  carries `details.index`.
+- **One result per invoice, in order**: `issued`, `already-issued`, `reconciled`, `failed`
+  (with `error`) or `skipped`. A failure never stops the others.
+- **Safe to repeat the whole call.** The DPS number is the idempotency key: what already
+  became an invoice comes back as `already-issued` and only the rest is sent. So after a
+  crash or a partial failure, run the same list again.
+- Mind the number you choose: it must be unique per series, and a gap does not matter.
+
+From the command line, a JSON array of the same invoice objects:
+
+```bash
+nfse issue-batch --file notas.json                 # validates, sends nothing
+nfse issue-batch --file notas.json --confirm --concurrency 4 --per-second 5
+```
+
+Progress goes to stderr and the final table (or `--json`) to stdout; the exit code is 1 if
+any invoice was not issued.
+
+## Exporting a service: foreign taker and `comExt`
+
+The national DPS carries a taker abroad (`NIF` and `endExt`) and the `comExt` group
+(LC 214/2025). The XML is validated against the bundled `DPS_v1.01.xsd` in the tests, but it
+has **not** been accepted by the live SEFIN yet: confirm with a first real issue, ideally
+the one you need, and compare with an XML the Emissor Nacional web produced.
+
+```ts
+await client.issue({
+  number: 12,
+  serviceAmount: 5000,                       // in reais
+  description: "Software development",
+  profile: { issTaxability: 4 },             // 4 = exportação → tribISSQN 3
+  taker: {
+    nif: "98-7654321",
+    legalName: "Acme Inc",
+    foreignAddress: {
+      countryCode: "0840",                   // 4 digits, only the GissOnline uses it
+      countryIso: "US",                      // the national DPS wants ISO alpha-2
+      fullAddress: "100 Main St, Suite 4",
+      postalCode: "10001",
+      city: "New York",
+      region: "NY",
+      // number and district are required by the XSD: they default to "S/N" and the city
+    },
+  },
+  foreignTrade: {
+    serviceMode: "1", relationship: "0", currency: "220", foreignAmount: 1000,
+    providerSupport: "01", takerSupport: "01", temporaryGoods: "1", shareWithMdic: "0",
+  },
+});
+```
+
+The builder refuses early, with a `ValidationError`, a foreign taker that has a CNPJ/CPF or a
+Brazilian `address`, one without `nif` (or `nifAbsentReason`: 0, 1 or 2), one without
+`foreignAddress`, and one without `countryIso`. The catalog says the SEFIN refuses
+`cNaoNIF = 0` for the provider (E0115); check whether it also does for the taker.
 
 ## DANFSe (the PDF)
 

@@ -1,5 +1,5 @@
 import { NotSupportedError, ValidationError } from "../../domain/errors.ts";
-import type { Address, Rps, ServiceTaker } from "../../domain/types.ts";
+import type { Address, ForeignAddress, ForeignTrade, Rps, ServiceTaker } from "../../domain/types.ts";
 import {
   amount,
   digitsOnly,
@@ -40,6 +40,35 @@ export interface DpsContext {
   /** Regime de apuração do Simples: 1 = tudo pelo SN (padrão para ME/EPP) */
   simplesApportionment?: 1 | 2 | 3;
   issueDate?: Date;
+  /** Esta DPS substitui uma nota já emitida: o grupo `subst` */
+  replaces?: Replacement;
+}
+
+/**
+ * Substituição de NFS-e. `reason` (`cMotivo`): 01 desenquadramento do Simples, 02
+ * enquadramento no Simples, 03 inclusão retroativa de imunidade/isenção, 04 exclusão
+ * retroativa de imunidade/isenção, 05 rejeição pelo tomador/intermediário responsável
+ * pelo tributo, 99 outros.
+ */
+export interface Replacement {
+  /** Chave de acesso, com 50 dígitos, da nota que será substituída */
+  accessKey: string;
+  reason: "01" | "02" | "03" | "04" | "05" | "99";
+  /** Descrição do motivo, de 15 a 255 caracteres */
+  justification?: string;
+}
+
+function assertReplacement({ accessKey, reason, justification }: Replacement): void {
+  const fail = (message: string, details: Record<string, unknown>): never => {
+    throw new ValidationError(message, { provider: "nacional", details });
+  };
+  if (!/^\d{50}$/.test(accessKey)) fail("A chave da nota substituída precisa ter 50 dígitos", { accessKey });
+  if (!["01", "02", "03", "04", "05", "99"].includes(reason)) {
+    fail("Motivo da substituição: 01, 02, 03, 04, 05 ou 99", { reason });
+  }
+  if (justification !== undefined && (justification.trim().length < 15 || justification.trim().length > 255)) {
+    fail("A justificativa da substituição precisa ter de 15 a 255 caracteres", { length: justification.trim().length });
+  }
 }
 
 /**
@@ -99,6 +128,7 @@ export function buildDps(rps: Rps, context: DpsContext): string {
   const values = service.amounts;
 
   assertSupported(rps);
+  if (context.replaces) assertReplacement(context.replaces);
 
   const taxability = TAXABILITY[service.issTaxability];
   if (taxability === undefined) {
@@ -130,6 +160,12 @@ export function buildDps(rps: Rps, context: DpsContext): string {
           // obrigatório em infDPS. A produção ainda segue o leiaute de 2026-02-09.
           context.environment === 2 ? element("finNFSe", 0) : undefined,
           element("cLocEmi", context.cityCode),
+          context.replaces &&
+            group("subst", [
+              element("chSubstda", context.replaces.accessKey),
+              element("cMotivo", context.replaces.reason),
+              element("xMotivo", context.replaces.justification?.trim()),
+            ]),
           group("prest", [
             element("CNPJ", digitsOnly(context.cnpj)),
             // O IM fica de fora: o cadastro nacional já a conhece, e uma
@@ -153,6 +189,7 @@ export function buildDps(rps: Rps, context: DpsContext): string {
                 ? [element("cNBS", service.nbsCode), element("xDescServ", service.description)]
                 : [element("xDescServ", service.description), element("cNBS", service.nbsCode)]),
             ]),
+            service.foreignTrade && foreignTradeGroup(service.foreignTrade),
             group("infoCompl", [element("xInfComp", rps.additionalInformation)]),
           ]),
           group("valores", [
@@ -214,11 +251,9 @@ export function buildDps(rps: Rps, context: DpsContext): string {
  */
 function assertSupported(rps: Rps): void {
   const missing = [
-    (rps.taker?.nif || rps.taker?.foreignAddress) && "tomador no exterior (NIF/endExt)",
-    rps.service.foreignTrade && "comércio exterior (comExt)",
     rps.intermediary && "intermediário",
     rps.construction && "obra",
-    rps.replacedRps && "substituição de nota",
+    rps.replacedRps && "substituição de nota por RPS (use `client.replace` com a chave da nota)",
   ].filter(Boolean);
   if (missing.length > 0) {
     throw new NotSupportedError(
@@ -233,13 +268,73 @@ function positive(value: number | undefined): string | undefined {
 }
 
 function takerGroup(taker: ServiceTaker): string {
+  const abroad = Boolean(taker.nif || taker.foreignAddress || taker.nifAbsentReason !== undefined);
+  if (abroad) assertForeignTaker(taker);
   return group("toma", [
     element("CNPJ", taker.cnpj && digitsOnly(taker.cnpj)),
     element("CPF", !taker.cnpj && taker.cpf ? digitsOnly(taker.cpf) : undefined),
+    element("NIF", !taker.cnpj && !taker.cpf ? taker.nif : undefined),
+    element(
+      "cNaoNIF",
+      !taker.cnpj && !taker.cpf && !taker.nif ? taker.nifAbsentReason : undefined,
+    ),
     element("xNome", taker.legalName),
     taker.address && addressGroup(taker.address),
+    taker.foreignAddress && foreignAddressGroup(taker.foreignAddress),
     element("fone", taker.contact?.phone && digitsOnly(taker.contact.phone)),
     element("email", taker.contact?.email),
+  ]);
+}
+
+/**
+ * Tomador no exterior: o XSD pede o NIF ou o motivo de não tê-lo (`cNaoNIF`), e o
+ * país no padrão ISO de 2 letras — o código de 4 dígitos do ABRASF não serve aqui.
+ */
+function assertForeignTaker(taker: ServiceTaker): void {
+  const fail = (message: string): never => {
+    throw new ValidationError(message, { provider: "nacional", details: { taker: taker.legalName } });
+  };
+  if (taker.cnpj || taker.cpf) fail("Tomador no exterior não tem CNPJ nem CPF: informe o NIF e o endereço no exterior");
+  if (taker.address) fail("Tomador no exterior usa `foreignAddress`, não `address`");
+  if (!taker.nif && taker.nifAbsentReason === undefined) {
+    fail("Tomador no exterior precisa do `nif` ou do motivo de não tê-lo (`nifAbsentReason`: 0, 1 ou 2)");
+  }
+  const foreign = taker.foreignAddress;
+  if (!foreign) return fail("Tomador no exterior precisa do `foreignAddress`");
+  if (!/^[A-Z]{2}$/.test(foreign.countryIso ?? "")) {
+    fail("O emissor nacional pede o país no formato ISO de 2 letras: informe `foreignAddress.countryIso` (ex.: \"US\")");
+  }
+}
+
+function foreignAddressGroup(address: ForeignAddress): string {
+  return group("end", [
+    group("endExt", [
+      element("cPais", address.countryIso),
+      element("cEndPost", address.postalCode),
+      element("xCidade", address.city),
+      element("xEstProvReg", address.region),
+    ]),
+    // O XSD exige logradouro, número e bairro; o endereço do exterior vem numa linha só,
+    // então o número e o bairro têm substitutos quando o chamador não os separa.
+    element("xLgr", address.fullAddress),
+    element("nro", address.number ?? "S/N"),
+    element("xBairro", address.district ?? address.city),
+  ]);
+}
+
+/** Grupo `comExt`: exportação ou importação de serviço (LC 214/2025). */
+function foreignTradeGroup(trade: ForeignTrade): string {
+  return group("comExt", [
+    element("mdPrestacao", trade.serviceMode),
+    element("vincPrest", trade.relationship),
+    element("tpMoeda", trade.currency),
+    element("vServMoeda", amount(trade.foreignAmount)),
+    element("mecAFComexP", trade.providerSupport),
+    element("mecAFComexT", trade.takerSupport),
+    element("movTempBens", trade.temporaryGoods),
+    element("nDI", trade.importDeclaration),
+    element("nRE", trade.exportRegistration),
+    element("mdic", trade.shareWithMdic),
   ]);
 }
 
@@ -302,6 +397,86 @@ export function buildCancellationEvent(input: CancellationInput): string {
       ),
     ],
   });
+}
+
+export type ManifestationRole = "provider" | "taker" | "intermediary";
+
+/**
+ * Motivos de rejeição (`cMotivo`): 1 duplicidade, 2 já emitida pelo tomador, 3 não
+ * ocorrência do fato gerador, 4 responsabilidade tributária, 5 valor/serviço/data, 9 outros.
+ */
+export type RejectionReason = 1 | 2 | 3 | 4 | 5 | 9;
+
+/** Código do evento e `xDesc` que o XSD exige, por quem se manifesta. */
+const MANIFESTATION = {
+  provider: { confirm: [202201, "Confirmação do Prestador"], reject: [202205, "Rejeição do Prestador"] },
+  taker: { confirm: [203202, "Confirmação do Tomador"], reject: [203206, "Rejeição do Tomador"] },
+  intermediary: { confirm: [204203, "Confirmação do Intermediário"], reject: [204207, "Rejeição do Intermediário"] },
+} as const;
+
+export interface ManifestationInput {
+  environment: NationalEnvironment;
+  cnpj: string;
+  accessKey: string;
+  /** Quem se manifesta: o CNPJ do certificado precisa ser o dessa parte na nota */
+  role: ManifestationRole;
+  action: "confirm" | "reject";
+  /** Só na rejeição */
+  reason?: RejectionReason;
+  /** Só na rejeição, opcional: de 15 a 255 caracteres */
+  justification?: string;
+  eventDate?: Date;
+}
+
+/** Eventos de manifestação sobre uma NFS-e: confirmação ou rejeição pelo prestador, tomador ou intermediário. */
+export function buildManifestationEvent(input: ManifestationInput): {
+  xml: string;
+  eventCode: number;
+} {
+  const [eventCode, who] = MANIFESTATION[input.role][input.action];
+  const rejecting = input.action === "reject";
+  const justification = input.justification?.trim();
+
+  if (rejecting && ![1, 2, 3, 4, 5, 9].includes(input.reason as number)) {
+    throw new ValidationError("Rejeição precisa de `reason`: 1, 2, 3, 4, 5 ou 9", {
+      provider: "nacional",
+      details: { reason: input.reason },
+    });
+  }
+  if (!rejecting && (input.reason !== undefined || justification)) {
+    throw new ValidationError("`reason` e `justification` só valem na rejeição", { provider: "nacional" });
+  }
+  if (justification !== undefined && (justification.length < 15 || justification.length > 255)) {
+    throw new ValidationError("A justificativa da rejeição precisa ter de 15 a 255 caracteres", {
+      provider: "nacional",
+      details: { length: justification.length },
+    });
+  }
+
+  const xml = xmlDocument({
+    root: "pedRegEvento",
+    xmlns: NATIONAL_NAMESPACE,
+    attributes: { versao: NATIONAL_VERSION },
+    body: [
+      requiredGroup(
+        "infPedReg",
+        [
+          element("tpAmb", input.environment),
+          element("verAplic", APPLICATION),
+          element("dhEvento", brasiliaDateTime(input.eventDate)),
+          element("CNPJAutor", digitsOnly(input.cnpj)),
+          element("chNFSe", input.accessKey),
+          group(`e${eventCode}`, [
+            element("xDesc", `Manifestação de NFS-e - ${who}`),
+            element("cMotivo", rejecting ? input.reason : undefined),
+            element("xMotivo", rejecting ? justification : undefined),
+          ]),
+        ],
+        { Id: `PRE${input.accessKey}${eventCode}` },
+      ),
+    ],
+  });
+  return { xml, eventCode };
 }
 
 /** O essencial de uma NFS-e nacional, lido do XML devolvido pela SEFIN ou pelo ADN. */

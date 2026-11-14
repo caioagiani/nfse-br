@@ -11,7 +11,7 @@ purchased-protocol purchased-number issue cancel replace customers \
 suppliers customer-add supplier-add customer-rm supplier-rm \
 portal-list portal-add portal-rm portal-import pdf xml zip cnpj cities \
 activities messages message profile national-status national-get \
-national-pdf national-xml national-docs national-rates danfse"
+national-pdf national-xml national-docs national-received national-rates issue-batch manifest danfse"
 
   global_opts="--env --issuer --json --xml --debug --help"
 
@@ -42,7 +42,7 @@ national-pdf national-xml national-docs national-rates danfse"
     issue)           opts="--customer --amount --description --competence --rps --series \
 --item --cnae --nbs --rate --csll --inss --income-tax --notes --confirm" ;;
     cancel)          opts="--number --reason --confirm" ;;
-    replace)         opts="--number --reason --customer --amount --description --confirm" ;;
+    replace)         opts="--number --key --dps --text --reason --customer --amount --description --confirm" ;;
     customers|suppliers) opts="--sync --from --to" ;;
     customer-add|supplier-add|portal-add)
       opts="--tax-id --name --alias --registration --email --phone --trade-name \
@@ -57,7 +57,10 @@ national-pdf national-xml national-docs national-rates danfse"
     national-get)    opts="--key" ;;
     national-pdf|national-xml) opts="--key --out" ;;
     national-docs)   opts="--from" ;;
+    national-received) opts="--from" ;;
     national-rates)  opts="--item --date" ;;
+    manifest)        opts="--key --as --action --reason --text --confirm" ;;
+    issue-batch)     opts="--file --confirm --concurrency --per-second" ;;
     danfse)          opts="--event --status --out" ;;
     messages)        opts="--id --unread --attachment --out --city" ;;
     message)         opts="--subject --text --city --confirm" ;;

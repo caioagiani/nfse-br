@@ -8,6 +8,7 @@
 | `GISS_MUNICIPIO` | city slug in the host (`suzano` → `ws-suzano.giss.com.br`) — see [municipalities.md](municipalities.md) |
 | `GISS_VERSAO` | layout version (`2.04`) |
 | `NFSE_EMISSOR` | `giss` or `nacional` — who issues and cancels. Empty: `issue` goes national, `cancel --key` national and `cancel --number` GissOnline; set `giss` for a city that has not adopted the national issuer; see [national.md](national.md) |
+| `NFSE_NATIONAL_SEFIN` / `NFSE_NATIONAL_ADN` | other addresses for the national SEFIN and ADN (a corporate proxy, a test server). Both or neither. The client certificate goes to whoever answers there, so point only at a destination you trust. Programmatic equivalent: `new NfseClient({ nationalHosts })` |
 | `GISS_CODIGO_MUNICIPIO` | IBGE code — optional for a [known city](municipalities.md), which supplies it |
 | `CERT_PATH` / `CERT_PASSWORD` | A1 certificate and its password |
 | `GISS_CNPJ` / `GISS_ISC_MUNICIPAL` | the provider |
@@ -53,14 +54,44 @@ for (const rps of batch) {
 With an instance neither `CERT_PATH` nor `CERT_PASSWORD` is needed — both exist
 only to open the file.
 
-**On caching certificates across requests.** Measured here: a `Certificate` weighs
-14 KB (1,000 tenants ≈ 14 MB), parsing a `.pfx` takes ~16 ms, and a SOAP
-round-trip takes ~400 ms — so the parse is about **4%** of a call. Memory is not
-the constraint; holding many private keys in a long-lived process is. Prefer
-job-scoped reuse, as above, over a global cache. If you do cache, keep the TTL
-short and include the certificate's fingerprint in the key, so replacing an
-expiring A1 invalidates the entry instead of signing with the old one until a
-worker restarts.
+### Caching certificates for many companies: `CertificatePool`
+
+Parsing a `.pfx` takes about 16 ms, a `Certificate` weighs ~14 KB, and a SOAP round-trip
+takes ~400 ms, so the parse is a small share of one call. What the pool buys is **not
+repeating it on every request of every company**, and **joining simultaneous requests of the
+same company into a single opening**. The price is private keys held in the process memory,
+so the pool limits itself:
+
+```ts
+import { CertificatePool, NfseClient } from "nfse-br";
+
+const certificates = new CertificatePool({
+  ttlMs: 10 * 60_000,        // a key never stays longer than this without being asked again
+  maxEntries: 500,           // least recently used leaves first
+  expiryMarginMs: 60_000,    // an A1 that expires within a minute is treated as expired
+});
+
+async function clientFor(tenant: Tenant) {
+  const certificate = await certificates.get(
+    tenant.id,
+    async () => ({ pfx: await decryptStoredCertificate(tenant.id), password: tenant.certificatePassword }),
+    { version: tenant.certificateUpdatedAt },   // changes when the company replaces its A1
+  );
+  return new NfseClient({ ...tenantConfig(tenant), certificate });
+}
+
+// when a company uploads a new certificate
+certificates.invalidate(tenant.id);
+```
+
+- `load` (your database and decryption) runs only when there is no valid entry.
+- **Expiry:** an expired certificate, or one within `expiryMarginMs` of expiring, is never served
+  from the cache nor stored in it: the source is asked again and can return the renewed one.
+- **Replaced A1:** pass `version` (an update date or the hash of the stored `.pfx`); a different
+  value ignores the cache. `invalidate(id)` does the same at once, `clear()` drops everything.
+- A failure to open (wrong password, bad file, your database down) is **not cached**.
+- `stats()` returns `{ size, hits, misses, loads, evictions }` for a dashboard or a log line.
+- It lives in one process: with several workers each has its own pool. Keep `ttlMs` short.
 
 The portal credentials take overrides the same way, since each company logs in
 with its own CPF:

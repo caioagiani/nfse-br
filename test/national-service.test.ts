@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { NationalError, NfseError, NotSupportedError, TransportError } from "../src/domain/errors.ts";
+import { NationalError, NfseError, NotSupportedError, TransportError, ValidationError } from "../src/domain/errors.ts";
 import { packXml, unpackXml } from "../src/providers/nacional/national-client.ts";
 import { createXmlSigner } from "../src/infra/xml-signer.ts";
+import { buildManifestationEvent } from "../src/providers/nacional/messages.ts";
 import { NATIONAL_HOSTS, NationalService } from "../src/providers/nacional/national-service.ts";
+import { SCHEMA_DIRECTORIES, validateAgainstSchema } from "../src/validation/schema-validator.ts";
 import {
   fakeTransport,
   PROVIDER_CNPJ,
@@ -280,6 +282,133 @@ describe("NationalService.cancel", () => {
   });
 });
 
+describe("NationalService.manifest", () => {
+  const route = () => ({
+    [`${sefin}/nfse/${ACCESS_KEY}/eventos`]: () => ({ status: 201, json: { eventoXmlGZipB64: packXml("<evento/>") } }),
+  });
+
+  const cases: [string, "provider" | "taker" | "intermediary", "confirm" | "reject", number, string][] = [
+    ["confirmação do prestador", "provider", "confirm", 202201, "Confirmação do Prestador"],
+    ["confirmação do tomador", "taker", "confirm", 203202, "Confirmação do Tomador"],
+    ["confirmação do intermediário", "intermediary", "confirm", 204203, "Confirmação do Intermediário"],
+    ["rejeição do prestador", "provider", "reject", 202205, "Rejeição do Prestador"],
+    ["rejeição do tomador", "taker", "reject", 203206, "Rejeição do Tomador"],
+    ["rejeição do intermediário", "intermediary", "reject", 204207, "Rejeição do Intermediário"],
+  ];
+  for (const [name, role, action, code, who] of cases) {
+    it(`${name}: evento ${code}, assinado, no id e na descrição do XSD`, async () => {
+      const { national, calls } = service(route());
+      await national.manifest(ACCESS_KEY, {
+        role,
+        action,
+        ...(action === "reject" ? { reason: 3 as const, justification: "Fato gerador nao ocorreu" } : {}),
+      });
+      const request = unpackXml(posted(calls[0]!)["pedidoRegistroEventoXmlGZipB64"]!);
+      assert.match(request, new RegExp(`<infPedReg Id="PRE${ACCESS_KEY}${code}">`));
+      assert.match(request, new RegExp(`<e${code}><xDesc>Manifestação de NFS-e - ${who}</xDesc>`));
+      assert.match(request, new RegExp(`<Reference URI="#PRE${ACCESS_KEY}${code}">`));
+      assert.equal(/<cMotivo>3<\/cMotivo>/.test(request), action === "reject");
+    });
+  }
+
+  it("o XML de cada manifestação valida contra o XSD de eventos", () => {
+    for (const [, role, action] of cases) {
+      const { xml } = buildManifestationEvent({
+        environment: 1,
+        cnpj: PROVIDER_CNPJ,
+        accessKey: ACCESS_KEY,
+        role,
+        action,
+        ...(action === "reject" ? { reason: 9 as const, justification: "Outro motivo qualquer aqui" } : {}),
+      });
+      const result = validateAgainstSchema(xml, "pedRegEvento_v1.01.xsd", SCHEMA_DIRECTORIES.national);
+      if (result === null) return; // sem xmllint
+      assert.deepEqual(result.errors, [], `${role} ${action}`);
+    }
+  });
+
+  it("recusa antes de enviar: rejeição sem motivo, motivo na confirmação, justificativa curta", async () => {
+    const { national, calls } = service(route());
+    await assert.rejects(national.manifest(ACCESS_KEY, { role: "taker", action: "reject" }), /`reason`/);
+    await assert.rejects(national.manifest(ACCESS_KEY, { role: "taker", action: "confirm", reason: 1 }), /só valem na rejeição/);
+    await assert.rejects(
+      national.manifest(ACCESS_KEY, { role: "taker", action: "reject", reason: 1, justification: "curta" }),
+      /15 a 255/,
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("a recusa da SEFIN (ex.: não é o tomador da nota) vira NationalError", async () => {
+    const { national } = service({
+      [`${sefin}/nfse/${ACCESS_KEY}/eventos`]: () => ({ status: 400, json: { erro: [{ codigo: "E0001", descricao: "autor invalido" }] } }),
+    });
+    await assert.rejects(national.manifest(ACCESS_KEY, { role: "taker", action: "confirm" }), NationalError);
+  });
+});
+
+describe("NationalService.received", () => {
+  const TAKER = "52884617000110";
+  const issuedBy = (cnpj: string, taker: string) =>
+    NFSE_XML.replace(/<emit><CNPJ>\d+<\/CNPJ>/, `<emit><CNPJ>${cnpj}</CNPJ>`).replace(/<toma><CNPJ>\d+<\/CNPJ>/, `<toma><CNPJ>${taker}</CNPJ>`);
+  const doc = (nsu: number, type: string, xml: string) => ({
+    NSU: nsu,
+    ChaveAcesso: ACCESS_KEY,
+    TipoDocumento: type,
+    ArquivoXml: packXml(xml),
+  });
+  const asTaker = (routes: Parameters<typeof fakeTransport>[0]) => {
+    const { transport, calls } = fakeTransport(routes);
+    const certificate = testCertificate();
+    return {
+      calls,
+      national: new NationalService({
+        certificate,
+        signer: createXmlSigner(certificate, "sha256"),
+        environment: "homologacao",
+        cnpj: TAKER,
+        cityCode: SUZANO,
+        transport,
+      }),
+    };
+  };
+  const page = (...docs: ReturnType<typeof doc>[]) => ({ json: { LoteDFe: docs } });
+
+  it("fica só com as notas emitidas por outros contra o seu CNPJ, e ignora eventos", async () => {
+    const { national } = asTaker({
+      [`${adn}/contribuintes/DFe/0`]: () =>
+        page(
+          doc(1, "NFSE", issuedBy("37969249000110", TAKER)), // recebida
+          doc(2, "NFSE", issuedBy(TAKER, "11222333000181")), // emitida por mim
+          doc(3, "EVENTO", "<evento/>"),
+          doc(4, "NFSE", "<nao-e-nota"), // lixo não derruba a leitura
+        ),
+      [`${adn}/contribuintes/DFe/5`]: () => ({ status: 404, json: {} }),
+    });
+    const result = await national.received();
+    assert.deepEqual(result.invoices.map((i) => i.issuerCnpj), ["37969249000110"]);
+    assert.equal(result.nextNsu, 5);
+    assert.equal(result.complete, true);
+  });
+
+  it("segue pelas páginas e devolve o cursor para continuar depois", async () => {
+    const { national, calls } = asTaker({
+      [`${adn}/contribuintes/DFe/10`]: () => page(doc(10, "NFSE", issuedBy("37969249000110", TAKER)), doc(11, "EVENTO", "<e/>")),
+      [`${adn}/contribuintes/DFe/12`]: () => page(doc(12, "NFSE", issuedBy("37969249000110", TAKER))),
+      [`${adn}/contribuintes/DFe/13`]: () => page(doc(13, "NFSE", issuedBy("37969249000110", TAKER))),
+    });
+    const stopped = await national.received(10, { maxPages: 2 });
+    assert.equal(stopped.invoices.length, 2);
+    assert.equal(stopped.complete, false, "parou no limite de páginas");
+    assert.equal(stopped.nextNsu, 13);
+    assert.equal(calls.length, 2);
+  });
+
+  it("sem nada novo devolve lista vazia e o mesmo cursor", async () => {
+    const { national } = asTaker({ [`${adn}/contribuintes/DFe/42`]: () => ({ status: 404, json: {} }) });
+    assert.deepEqual(await national.received(42), { invoices: [], nextNsu: 42, complete: true });
+  });
+});
+
 describe("NationalService.distribution", () => {
   it("descompacta os documentos do lote", async () => {
     const { national, calls } = service({
@@ -388,8 +517,11 @@ describe("NationalService.issue — falhas no envio", () => {
 
   it("recursos ainda não montados falham antes de qualquer envio", async () => {
     const { national, calls } = service({});
+    const works = { ...sampleRps(), construction: { workCode: "1" } };
+    await assert.rejects(national.issue(works, issueOptions), NotSupportedError);
+    // tomador no exterior incompleto também não chega ao envio
     const foreign = sampleRps({ taker: { nif: "123", legalName: "Acme Inc." } });
-    await assert.rejects(national.issue(foreign, issueOptions), NotSupportedError);
+    await assert.rejects(national.issue(foreign, issueOptions), ValidationError);
     assert.equal(calls.length, 0);
   });
 });

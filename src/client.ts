@@ -5,16 +5,19 @@ import {
   type Certificate,
   type CertificateInput,
 } from "./infra/certificate.ts";
+import { runPool, sleep, type PoolOptions, type PoolResult } from "./infra/batch.ts";
 import { createXmlSigner } from "./infra/xml-signer.ts";
+import { NfseError, ValidationError } from "./domain/errors.ts";
 import type { QueryResult } from "./providers/giss/messages/parser.ts";
 import { NfscService } from "./providers/giss/nfsc-service.ts";
 import { callSoap, type SoapService } from "./providers/giss/soap-client.ts";
 import {
   NationalService,
+  type NationalHosts,
   type NationalIssueOptions,
   type NationalIssueOutcome,
 } from "./providers/nacional/national-service.ts";
-import type { NationalCancellationReason } from "./providers/nacional/messages.ts";
+import type { NationalCancellationReason, Replacement } from "./providers/nacional/messages.ts";
 import {
   buildRps,
   DEFAULT_PROFILE,
@@ -43,6 +46,39 @@ export interface NfseClientOptions extends Partial<GissConfig> {
    * `DEFAULT_PROFILE`. É o que `issue` usa; cada nota só informa o que varia.
    */
   profile?: Partial<IssuingProfile>;
+  /**
+   * Endereços da SEFIN e do ADN no lugar dos oficiais (proxy, servidor de testes).
+   * O certificado do cliente vai a quem estiver lá: só aponte para um destino confiável.
+   */
+  nationalHosts?: NationalHosts;
+}
+
+export interface IssueManyOptions extends PoolOptions {
+  /** Novas tentativas por nota em falha passageira. Padrão 2 */
+  retries?: number;
+  /** Espera antes da primeira nova tentativa; dobra a cada uma. Padrão 500 ms */
+  retryDelayMs?: number;
+  /** Chamado a cada nota concluída (em qualquer ordem), com o total já concluído */
+  onProgress?: (done: number, total: number, result: IssueManyResult) => void;
+}
+
+/** O que aconteceu com uma nota de `issueMany`. `index` é a posição na lista enviada. */
+export type IssueManyResult = { index: number; input: NationalInvoiceInput } & (
+  | { status: "issued" | "already-issued" | "reconciled"; dpsId: string; nfse: NationalIssueOutcome["nfse"]; alerts: NationalIssueOutcome["alerts"] }
+  | { status: "failed"; error: unknown }
+  | { status: "skipped" }
+);
+
+function toResult(
+  input: NationalInvoiceInput,
+  index: number,
+  result: PoolResult<NationalIssueOutcome>,
+): IssueManyResult {
+  if (result.status === "done") {
+    const { status, dpsId, nfse, alerts } = result.value;
+    return { index, input, status, dpsId, nfse, alerts };
+  }
+  return result.status === "failed" ? { index, input, status: "failed", error: result.error } : { index, input, status: "skipped" };
 }
 
 /** Uma troca SOAP com o GissOnline, entregue a `onExchange`. */
@@ -97,7 +133,7 @@ export class NfseClient {
   readonly nfsc: NfscService;
 
   constructor(options: NfseClientOptions = {}) {
-    const { debug = false, certificate, profile, onExchange, ...overrides } = options;
+    const { debug = false, certificate, profile, onExchange, nationalHosts, ...overrides } = options;
     this.#profile = { ...DEFAULT_PROFILE, ...profile };
 
     // `CERT_PATH` e `CERT_PASSWORD` só existem para abrir o arquivo: quando o
@@ -138,6 +174,7 @@ export class NfseClient {
       cnpj: this.config.cnpj,
       cityCode: this.config.cityCode,
       debug,
+      ...(nationalHosts && { hosts: nationalHosts }),
     });
   }
 
@@ -145,6 +182,64 @@ export class NfseClient {
   issue(invoice: NationalInvoiceInput): Promise<NationalIssueOutcome> {
     const { rps, dps } = this.#compose(invoice);
     return this.national.issue(rps, dps);
+  }
+
+  /**
+   * Emite várias notas, com limite de concorrência e de taxa.
+   *
+   * Tudo é validado e montado **antes** de enviar qualquer coisa: uma nota inválida ou
+   * um número de DPS repetido na lista lança `ValidationError` e nada é emitido. Depois,
+   * cada nota vira um resultado — `issued`, `already-issued`, `reconciled`, `failed` ou
+   * `skipped` (se o `signal` abortou) — e uma falha nunca derruba as demais.
+   *
+   * É seguro repetir a chamada inteira: o número da DPS é a chave de idempotência, e o
+   * que já virou nota volta como `already-issued`. Falha passageira (`retryable`) é
+   * tentada de novo até `retries` vezes, com espera crescente.
+   */
+  async issueMany(
+    invoices: readonly NationalInvoiceInput[],
+    options: IssueManyOptions = {},
+  ): Promise<IssueManyResult[]> {
+    const { retries = 2, retryDelayMs = 500, onProgress, ...pool } = options;
+    const seen = new Map<string, number>();
+    const composed = invoices.map((invoice, index) => {
+      try {
+        const { rps, dps } = this.#compose(invoice);
+        const key = `${dps.series}:${/^\d+$/.test(String(dps.number)) ? BigInt(dps.number) : dps.number}`;
+        const first = seen.get(key);
+        if (first !== undefined) {
+          throw new ValidationError(
+            `DPS number ${dps.number} (series ${dps.series}) appears twice, at items ${first} and ${index}`,
+          );
+        }
+        seen.set(key, index);
+        return { rps, dps };
+      } catch (error) {
+        if (error instanceof NfseError) Object.assign(error.details, { index });
+        throw error;
+      }
+    });
+
+    let done = 0;
+    const results = await runPool(
+      composed,
+      async ({ rps, dps }) => {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            return await this.national.issue(rps, dps);
+          } catch (error) {
+            const again = error instanceof NfseError && error.retryable && attempt < retries;
+            if (!again) throw error;
+            await sleep(retryDelayMs * 2 ** attempt * (0.75 + Math.random() / 2));
+          }
+        }
+      },
+      pool,
+      (index, result) => {
+        if (onProgress) onProgress(++done, invoices.length, toResult(invoices[index]!, index, result));
+      },
+    );
+    return results.map((result, index) => toResult(invoices[index]!, index, result));
   }
 
   /** A DPS assinada que `issue` enviaria, sem enviar nada. */
@@ -156,6 +251,31 @@ export class NfseClient {
   /** Cancela uma nota nacional pela chave de acesso (evento 101101). */
   cancel(accessKey: string, reason: NationalCancellationReason, justification: string) {
     return this.national.cancel(accessKey, reason, justification);
+  }
+
+  /**
+   * Emite uma nota que substitui outra, pela chave dela (grupo `subst` da DPS). A SEFIN
+   * registra o cancelamento por substituição (evento 105102) na nota antiga. Para ME/EPP,
+   * competência, tomador e valor não podem mudar em alguns casos (E0060 a E0063).
+   */
+  replace(
+    accessKey: string,
+    invoice: NationalInvoiceInput,
+    reason: Replacement["reason"],
+    justification?: string,
+  ): Promise<NationalIssueOutcome> {
+    const { rps, dps } = this.#compose(invoice);
+    return this.national.issue(rps, { ...dps, replaces: { accessKey, reason, justification } });
+  }
+
+  /** Notas que outros emitiram contra o seu CNPJ (serviços tomados), a partir de um NSU. */
+  received(fromNsu = 0, options?: { maxPages?: number }) {
+    return this.national.received(fromNsu, options);
+  }
+
+  /** Confirma ou rejeita uma nota como prestador, tomador ou intermediário (eventos de manifestação). */
+  manifest(accessKey: string, options: Parameters<NationalService["manifest"]>[1]) {
+    return this.national.manifest(accessKey, options);
   }
 
   #compose({ number, series, ...input }: NationalInvoiceInput) {

@@ -33,7 +33,10 @@ nfse replace --number 569 --reason 1 --customer acme --amount 15000 --confirm
 # national issuer (Sistema Nacional NFS-e) — see national.md
 nfse national-status                      # has the city enabled it?
 nfse national-docs                        # invoices and events with your CNPJ
+nfse national-received [--from NSU]       # services taken: invoices others issued against your CNPJ
 nfse national-rates --item 01.09.02.001   # the city's ISS rate and special regimes for a service
+nfse manifest --key 3552502… --as taker --action confirm   # confirm/reject an invoice (add --confirm)
+nfse issue-batch --file notas.json        # validates a JSON array of invoices; add --confirm to issue
 nfse national-pdf --key 3552502…          # DANFSe by access key
 nfse danfse nfse.xml --event cancel.xml   # DANFSe from a saved XML, offline
 nfse issue --customer acme --amount 15000 --dps 7 --confirm   # national is the default

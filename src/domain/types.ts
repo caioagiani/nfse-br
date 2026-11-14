@@ -38,6 +38,11 @@ export interface ServiceTaker {
   municipalRegistration?: string;
   /** Número de identificação fiscal, para tomador no exterior */
   nif?: string;
+  /**
+   * Emissor nacional, tomador no exterior sem NIF: motivo (`cNaoNIF`) —
+   * 0 = não informado na nota de origem, 1 = dispensado do NIF, 2 = não exigência do NIF.
+   */
+  nifAbsentReason?: 0 | 1 | 2;
   legalName: string;
   /** Endereço no Brasil. Exclusivo com `foreignAddress` — o XSD aceita um ou outro. */
   address?: Address;
@@ -50,6 +55,12 @@ export interface ServiceTaker {
 export interface ForeignAddress {
   /** Código do país com 4 dígitos, ex.: "0840" (Estados Unidos) */
   countryCode: string;
+  /** País em ISO de 2 letras, ex.: "US". Só o emissor nacional usa, e ele o exige */
+  countryIso?: string;
+  /** Só o emissor nacional: número do endereço (o XSD o exige; sem ele vai "S/N") */
+  number?: string;
+  /** Só o emissor nacional: bairro (o XSD o exige; sem ele vai a cidade) */
+  district?: string;
   /** Logradouro, número e complemento numa linha só */
   fullAddress: string;
   postalCode: string;

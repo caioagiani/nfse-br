@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import fontkit from "@pdf-lib/fontkit";
-import { degrees, PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import fontkit from "@cantoo/fontkit";
+import { degrees, PDFDocument, rgb, type PDFFont, type PDFPage } from "@cantoo/pdf-lib";
 import qrcode from "qrcode-generator";
 import { parseNationalEvent } from "../messages.ts";
 import { buildDanfseData, danfseStatus, type DanfseData, type DanfseParty, type DanfseStatus } from "./danfse-data.ts";

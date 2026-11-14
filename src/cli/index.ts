@@ -20,14 +20,16 @@ import type { Address, CancellationCode, Rps } from "../domain/types.ts";
 import { exportPem, type Certificate } from "../infra/certificate.ts";
 import { isoDate } from "../infra/xml.ts";
 import {
+  buildManifestationEvent,
   nfseNumberFromKey,
   parseNationalEvent,
   parseNationalNfse,
   type NationalCancellationReason,
   type NationalNfse,
+  type Replacement,
 } from "../providers/nacional/messages.ts";
 import type { Nfse, QueryResult } from "../providers/giss/messages/parser.ts";
-import { NfseClient } from "../client.ts";
+import { NfseClient, type NationalInvoiceInput } from "../client.ts";
 import { renderDanfse } from "../providers/nacional/danfse/danfse-pdf.ts";
 import {
   lookupParty,
@@ -135,6 +137,13 @@ NATIONAL ISSUER (Sistema Nacional NFS-e — mandatory for Simples from 2026-11-0
   national-pdf --key K [--out DIR|FILE]             DANFSe (the national PDF)
   national-xml --key K [--out DIR|FILE]             Invoice XML
   national-docs [--from NSU]                        Invoices and events where your CNPJ appears
+  manifest --key K --as taker --action confirm|reject [--reason N --text T] [--confirm]
+                                                    Confirm or reject an invoice as provider, taker or intermediary
+  replace --key K --reason 01..05|99 [--text T] --customer … --amount … --dps N [--confirm]
+                                                    Issue an invoice that replaces another (national)
+  issue-batch --file notas.json [--confirm] [--concurrency N] [--per-second N]
+                                                    Issue many invoices from a JSON array (safe to repeat)
+  national-received [--from NSU]                   Invoices others issued against your CNPJ (services taken)
   national-rates --item 01.09.02.001 [--date D]     The city's ISS rate and special regimes for a service
   danfse <nfse.xml> [--event FILE]... [--out DIR|FILE]  DANFSe from a saved XML (offline)
          [--status cancelled|replaced]              Watermark; otherwise taken from the events
@@ -175,6 +184,11 @@ const options = {
   protocol: { type: "string" },
   export: { type: "boolean", default: false },
   out: { type: "string" },
+  file: { type: "string" },
+  as: { type: "string" },
+  action: { type: "string" },
+  concurrency: { type: "string" },
+  "per-second": { type: "string" },
   customer: { type: "string" },
   amount: { type: "string" },
   description: { type: "string" },
@@ -277,6 +291,7 @@ async function main() {
     environment: values.env as Environment | undefined,
     issuer: values.issuer as Issuer | undefined,
     debug: values.debug,
+    nationalHosts: nationalHostsFromEnv(),
   });
 
   warnCertificateExpiry(client.certificate);
@@ -630,6 +645,21 @@ function warnCertificateExpiry(certificate: Certificate, now = new Date()): void
   );
 }
 
+/**
+ * `NFSE_NATIONAL_SEFIN` e `NFSE_NATIONAL_ADN` trocam os endereços do nacional (proxy,
+ * servidor de testes). Só valem os dois juntos: um endereço oficial e outro não
+ * mandaria o certificado para onde ninguém planejou.
+ */
+function nationalHostsFromEnv(): { sefin: string; adn: string } | undefined {
+  const sefin = process.env["NFSE_NATIONAL_SEFIN"]?.trim();
+  const adn = process.env["NFSE_NATIONAL_ADN"]?.trim();
+  if (!sefin && !adn) return undefined;
+  if (!sefin || !adn) {
+    throw new ValidationError("Set NFSE_NATIONAL_SEFIN and NFSE_NATIONAL_ADN together, or neither");
+  }
+  return { sefin: sefin.replace(/\/+$/, ""), adn: adn.replace(/\/+$/, "") };
+}
+
 const GISS_WRITE_COMMANDS = new Set(["issue", "cancel", "replace"]);
 
 /**
@@ -681,6 +711,7 @@ function resolveIssuer(
     return { issuer: values.key ? "nacional" : "giss", source: "automatic" };
   }
   if (command === "replace") {
+    if (values.key) return { issuer: "nacional", source: "automatic" };
     let optant = false;
     try {
       optant = new ProfileRepository().load().simplesNacionalOptant === 1;
@@ -792,6 +823,32 @@ async function runNationalCommand(
       return true;
     }
 
+    case "national-received": {
+      const { invoices, nextNsu, complete } = await national.received(Number(values.from ?? 0));
+      if (values.json) {
+        console.log(
+          JSON.stringify({ nextNsu, complete, invoices: invoices.map(({ xml, ...rest }) => rest) }, null, 2),
+        );
+        return true;
+      }
+      if (invoices.length === 0) console.log("No invoice issued against your CNPJ in this range.");
+      for (const nfse of invoices) {
+        console.log(
+          [
+            (nfse.number ?? "").padStart(9),
+            (nfse.processedAt ?? "").slice(0, 10),
+            `R$ ${nfse.serviceAmount?.toFixed(2) ?? "—"}`.padStart(14),
+            nfse.issuerName ?? nfse.issuerCnpj ?? "",
+          ].join("  "),
+        );
+        console.log(`${"".padStart(9)}  key ${nfse.accessKey}`);
+      }
+      console.log(
+        `\nNext NSU: ${nextNsu}${complete ? "" : " (stopped at the page limit — repeat with --from to continue)"}`,
+      );
+      return true;
+    }
+
     case "national-docs": {
       const documents = await national.distribution(Number(values.from ?? 0));
       if (values.json) {
@@ -879,6 +936,95 @@ async function runNationalCommand(
       return true;
     }
 
+    case "issue-batch": {
+      if (!values.file) throw new ValidationError("Provide the JSON file with --file notas.json");
+      const parsed: unknown = JSON.parse(readFileSync(values.file, "utf8"));
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new ValidationError("The file must hold a non-empty JSON array of invoices");
+      }
+      const profile = new ProfileRepository().load();
+      const invoices = (parsed as NationalInvoiceInput[]).map((invoice) => ({
+        ...invoice,
+        profile: { ...profile, ...invoice.profile },
+      }));
+      const concurrency = values.concurrency ? Number(values.concurrency) : undefined;
+      const ratePerSecond = values["per-second"] ? Number(values["per-second"]) : undefined;
+
+      if (!values.confirm) {
+        // Valida e monta todas as DPS sem enviar: o mesmo que `issueMany` faz antes de começar.
+        invoices.forEach((invoice) => client.previewIssue(invoice));
+        console.log(`${invoices.length} invoice(s) are valid and unique. Nothing was sent.`);
+        for (const [i, invoice] of invoices.entries()) {
+          console.log(`  ${String(i).padStart(3)}  DPS ${invoice.number}  R$ ${invoice.serviceAmount}  ${invoice.taker.legalName}`);
+        }
+        console.log("\nRepeat with --confirm to actually issue. Repeating the same file later is safe.");
+        return true;
+      }
+
+      const results = await client.issueMany(invoices, {
+        concurrency,
+        ratePerSecond,
+        onProgress: (done, total, r) => {
+          const detail = r.status === "failed" ? ` ${(r.error as Error).message}` : "";
+          console.error(`[${done}/${total}] DPS ${r.input.number}: ${r.status}${detail}`);
+        },
+      });
+      const failed = results.filter((r) => r.status === "failed" || r.status === "skipped");
+      if (values.json) {
+        console.log(
+          JSON.stringify(
+            results.map((r) => ({
+              index: r.index,
+              number: r.input.number,
+              status: r.status,
+              accessKey: "nfse" in r ? r.nfse.accessKey : undefined,
+              error: r.status === "failed" ? (r.error as Error).message : undefined,
+            })),
+            null,
+            2,
+          ),
+        );
+      } else {
+        for (const r of results) {
+          const key = "nfse" in r ? ` ${r.nfse.accessKey}` : "";
+          console.log(`${String(r.index).padStart(3)}  DPS ${r.input.number}  ${r.status}${key}`);
+        }
+        console.log(`\n${results.length - failed.length} ok, ${failed.length} not issued.`);
+      }
+      if (failed.length > 0) {
+        console.error("Repeat the same command: what was issued comes back as already-issued, only the rest is sent.");
+        process.exitCode = 1;
+      }
+      return true;
+    }
+
+    case "manifest": {
+      const roles = ["provider", "taker", "intermediary"] as const;
+      const role = roles.find((r) => r === values.as);
+      if (!role) throw new ValidationError("Provide --as provider|taker|intermediary: who you are on the invoice");
+      const action: "confirm" | "reject" | undefined =
+        values.action === "confirm" ? "confirm" : values.action === "reject" ? "reject" : undefined;
+      if (!action) throw new ValidationError("Provide --action confirm|reject");
+      const accessKey = key();
+      const reason = values.reason ? Number(values.reason) : undefined;
+      const options = {
+        role,
+        action,
+        reason: reason as 1 | 2 | 3 | 4 | 5 | 9 | undefined,
+        justification: values.text,
+      };
+      if (!values.confirm) {
+        buildManifestationEvent({ ...options, environment: national.environmentCode, cnpj: client.config.cnpj, accessKey });
+        console.log(`Would ${action} ${accessKey} as ${role}${reason ? `, reason ${reason}` : ""}. Nothing was sent.`);
+        console.log("Repeat with --confirm to register the event. The certificate's CNPJ must be that party on the invoice.");
+        return true;
+      }
+      const event = await national.manifest(accessKey, options);
+      console.log(`Event registered: ${action} as ${role}.`);
+      if (values.xml) console.log(event);
+      return true;
+    }
+
     case "cancel": {
       if (!viaNational) return false;
       const accessKey = key();
@@ -903,13 +1049,40 @@ async function runNationalCommand(
       return true;
     }
 
-    case "replace":
-      if (viaNational) {
-        throw new Error(
-          "replace is not available on the national issuer yet: cancel, then issue again",
-        );
+    case "replace": {
+      if (!viaNational) return false;
+      const accessKey = key();
+      if (!values.reason) {
+        throw new ValidationError("Provide --reason 01 to 05 or 99 (why the invoice is replaced)");
       }
-      return false;
+      const reason = values.reason.padStart(2, "0") as Replacement["reason"];
+      const rps = buildRpsFromCli(values);
+      const profile = new ProfileRepository().load();
+      const number = values.dps ?? String(Math.floor(Date.now() / 1000));
+      const issueOptions = {
+        series: values.series ?? profile.nationalSeries ?? "1",
+        number,
+        simplesOption: profile.simplesOption ?? (rps.simplesNacionalOptant === 1 ? 3 : 1),
+        simplesApportionment: profile.simplesApportionment,
+        replaces: { accessKey, reason, justification: values.text },
+      } as const;
+
+      if (!values.confirm) {
+        const preview = national.previewDps(rps, issueOptions);
+        if (values.xml) return void console.log(preview), true;
+        console.log(`Would replace ${accessKey} (reason ${reason}) with:\n`);
+        console.log(issueSummary(values, rps));
+        console.log(`DPS:           ${number} series ${issueOptions.series}`);
+        console.log("\nNothing was sent. Repeat with --confirm to actually replace.");
+        return true;
+      }
+      if (!values.dps) console.log(`DPS ${number} (generated). Pass --dps ${number} to retry safely.`);
+      const outcome = await national.issue(rps, issueOptions);
+      console.log(outcome.status === "already-issued" ? "This DPS had already been issued:" : "Replacement issued:");
+      printNational(outcome.nfse, values);
+      for (const alert of outcome.alerts) console.log(`⚠ [${alert.code}] ${alert.message}`);
+      return true;
+    }
 
     default:
       return false;
