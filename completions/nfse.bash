@@ -11,7 +11,7 @@ purchased-protocol purchased-number issue cancel replace customers \
 suppliers customer-add supplier-add customer-rm supplier-rm \
 portal-list portal-add portal-rm portal-import pdf xml zip cnpj cities \
 activities messages message profile national-status national-get \
-national-pdf national-xml national-docs national-rates issue-batch manifest danfse"
+national-pdf national-xml national-docs national-received national-rates issue-batch manifest danfse"
 
   global_opts="--env --issuer --json --xml --debug --help"
 
@@ -57,6 +57,7 @@ national-pdf national-xml national-docs national-rates issue-batch manifest danf
     national-get)    opts="--key" ;;
     national-pdf|national-xml) opts="--key --out" ;;
     national-docs)   opts="--from" ;;
+    national-received) opts="--from" ;;
     national-rates)  opts="--item --date" ;;
     manifest)        opts="--key --as --action --reason --text --confirm" ;;
     issue-batch)     opts="--file --confirm --concurrency --per-second" ;;

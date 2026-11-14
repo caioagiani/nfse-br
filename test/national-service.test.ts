@@ -346,6 +346,69 @@ describe("NationalService.manifest", () => {
   });
 });
 
+describe("NationalService.received", () => {
+  const TAKER = "52884617000110";
+  const issuedBy = (cnpj: string, taker: string) =>
+    NFSE_XML.replace(/<emit><CNPJ>\d+<\/CNPJ>/, `<emit><CNPJ>${cnpj}</CNPJ>`).replace(/<toma><CNPJ>\d+<\/CNPJ>/, `<toma><CNPJ>${taker}</CNPJ>`);
+  const doc = (nsu: number, type: string, xml: string) => ({
+    NSU: nsu,
+    ChaveAcesso: ACCESS_KEY,
+    TipoDocumento: type,
+    ArquivoXml: packXml(xml),
+  });
+  const asTaker = (routes: Parameters<typeof fakeTransport>[0]) => {
+    const { transport, calls } = fakeTransport(routes);
+    const certificate = testCertificate();
+    return {
+      calls,
+      national: new NationalService({
+        certificate,
+        signer: createXmlSigner(certificate, "sha256"),
+        environment: "homologacao",
+        cnpj: TAKER,
+        cityCode: SUZANO,
+        transport,
+      }),
+    };
+  };
+  const page = (...docs: ReturnType<typeof doc>[]) => ({ json: { LoteDFe: docs } });
+
+  it("fica só com as notas emitidas por outros contra o seu CNPJ, e ignora eventos", async () => {
+    const { national } = asTaker({
+      [`${adn}/contribuintes/DFe/0`]: () =>
+        page(
+          doc(1, "NFSE", issuedBy("37969249000110", TAKER)), // recebida
+          doc(2, "NFSE", issuedBy(TAKER, "11222333000181")), // emitida por mim
+          doc(3, "EVENTO", "<evento/>"),
+          doc(4, "NFSE", "<nao-e-nota"), // lixo não derruba a leitura
+        ),
+      [`${adn}/contribuintes/DFe/5`]: () => ({ status: 404, json: {} }),
+    });
+    const result = await national.received();
+    assert.deepEqual(result.invoices.map((i) => i.issuerCnpj), ["37969249000110"]);
+    assert.equal(result.nextNsu, 5);
+    assert.equal(result.complete, true);
+  });
+
+  it("segue pelas páginas e devolve o cursor para continuar depois", async () => {
+    const { national, calls } = asTaker({
+      [`${adn}/contribuintes/DFe/10`]: () => page(doc(10, "NFSE", issuedBy("37969249000110", TAKER)), doc(11, "EVENTO", "<e/>")),
+      [`${adn}/contribuintes/DFe/12`]: () => page(doc(12, "NFSE", issuedBy("37969249000110", TAKER))),
+      [`${adn}/contribuintes/DFe/13`]: () => page(doc(13, "NFSE", issuedBy("37969249000110", TAKER))),
+    });
+    const stopped = await national.received(10, { maxPages: 2 });
+    assert.equal(stopped.invoices.length, 2);
+    assert.equal(stopped.complete, false, "parou no limite de páginas");
+    assert.equal(stopped.nextNsu, 13);
+    assert.equal(calls.length, 2);
+  });
+
+  it("sem nada novo devolve lista vazia e o mesmo cursor", async () => {
+    const { national } = asTaker({ [`${adn}/contribuintes/DFe/42`]: () => ({ status: 404, json: {} }) });
+    assert.deepEqual(await national.received(42), { invoices: [], nextNsu: 42, complete: true });
+  });
+});
+
 describe("NationalService.distribution", () => {
   it("descompacta os documentos do lote", async () => {
     const { national, calls } = service({

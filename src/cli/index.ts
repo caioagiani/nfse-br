@@ -143,6 +143,7 @@ NATIONAL ISSUER (Sistema Nacional NFS-e — mandatory for Simples from 2026-11-0
                                                     Issue an invoice that replaces another (national)
   issue-batch --file notas.json [--confirm] [--concurrency N] [--per-second N]
                                                     Issue many invoices from a JSON array (safe to repeat)
+  national-received [--from NSU]                   Invoices others issued against your CNPJ (services taken)
   national-rates --item 01.09.02.001 [--date D]     The city's ISS rate and special regimes for a service
   danfse <nfse.xml> [--event FILE]... [--out DIR|FILE]  DANFSe from a saved XML (offline)
          [--status cancelled|replaced]              Watermark; otherwise taken from the events
@@ -819,6 +820,32 @@ async function runNationalCommand(
       }
       for (const r of regimes ?? []) console.log(`Special regime ${r.status} since ${r.from.slice(0, 10)}${r.notes ? `: ${r.notes}` : ""}`);
       console.log("\nThe Simples pays by the annex (DAS), not by this rate: it matters for withholding and for other regimes.");
+      return true;
+    }
+
+    case "national-received": {
+      const { invoices, nextNsu, complete } = await national.received(Number(values.from ?? 0));
+      if (values.json) {
+        console.log(
+          JSON.stringify({ nextNsu, complete, invoices: invoices.map(({ xml, ...rest }) => rest) }, null, 2),
+        );
+        return true;
+      }
+      if (invoices.length === 0) console.log("No invoice issued against your CNPJ in this range.");
+      for (const nfse of invoices) {
+        console.log(
+          [
+            (nfse.number ?? "").padStart(9),
+            (nfse.processedAt ?? "").slice(0, 10),
+            `R$ ${nfse.serviceAmount?.toFixed(2) ?? "—"}`.padStart(14),
+            nfse.issuerName ?? nfse.issuerCnpj ?? "",
+          ].join("  "),
+        );
+        console.log(`${"".padStart(9)}  key ${nfse.accessKey}`);
+      }
+      console.log(
+        `\nNext NSU: ${nextNsu}${complete ? "" : " (stopped at the page limit — repeat with --from to continue)"}`,
+      );
       return true;
     }
 

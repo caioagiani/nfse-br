@@ -268,6 +268,11 @@ export class NfseClient {
     return this.national.issue(rps, { ...dps, replaces: { accessKey, reason, justification } });
   }
 
+  /** Notas que outros emitiram contra o seu CNPJ (serviços tomados), a partir de um NSU. */
+  received(fromNsu = 0, options?: { maxPages?: number }) {
+    return this.national.received(fromNsu, options);
+  }
+
   /** Confirma ou rejeita uma nota como prestador, tomador ou intermediário (eventos de manifestação). */
   manifest(accessKey: string, options: Parameters<NationalService["manifest"]>[1]) {
     return this.national.manifest(accessKey, options);
