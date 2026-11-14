@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { NfseClient, PortalError, PortalService, type SoapExchange } from "../src/index.ts";
+import { NfseClient, PortalError, PortalService, callSoap, type SoapExchange } from "../src/index.ts";
+import { readSoapResponse } from "../src/providers/giss/soap-client.ts";
 import { PROVIDER_CNPJ, testPfx } from "./helpers.ts";
 
 const realFetch = globalThis.fetch;
@@ -20,6 +21,11 @@ describe("PortalService.listActivities", () => {
 
   it("resposta sem a lista é erro, não lista vazia", async () => {
     globalThis.fetch = (async () => json({ mensagem: "algo deu errado" })) as typeof fetch;
+    await assert.rejects(PortalService.listActivities("3552502"), PortalError);
+  });
+
+  it("sucesso:false é erro mesmo com uma lista presente", async () => {
+    globalThis.fetch = (async () => json({ sucesso: false, conteudo: [], mensagem: "negado" })) as typeof fetch;
     await assert.rejects(PortalService.listActivities("3552502"), PortalError);
   });
 
@@ -69,5 +75,36 @@ describe("NfseClient — onExchange", () => {
       .nfse.queryProvidedServices({ issuePeriod: { from: "2026-11-01", to: "2026-11-30" } })
       .catch((e: Error) => e);
     assert.doesNotMatch(String((error as Error).message), /observador quebrado/);
+  });
+});
+
+describe("SOAP — o envelope bruto acompanha o erro", () => {
+  const fault =
+    '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><soap:Fault><faultcode>soap:Server</faultcode><faultstring>falhou</faultstring></soap:Fault></soap:Body></soap:Envelope>';
+
+  it("SOAP Fault leva o envelope em details", () => {
+    try {
+      readSoapResponse("GerarNfse", 500, fault);
+      assert.fail("deveria lançar");
+    } catch (error) {
+      const { details } = error as { details: Record<string, unknown> };
+      assert.equal(details.envelope, fault);
+      assert.equal(details.status, 500);
+    }
+  });
+
+  it("HTTP 5xx com HTML (UNAVAILABLE) também leva o corpo", () => {
+    try {
+      readSoapResponse("GerarNfse", 503, "<html>fora do ar</html>");
+      assert.fail("deveria lançar");
+    } catch (error) {
+      const e = error as { code: string; details: Record<string, unknown> };
+      assert.equal(e.code, "UNAVAILABLE");
+      assert.equal(e.details.envelope, "<html>fora do ar</html>");
+    }
+  });
+
+  it("callSoap é exportado para quem embrulha o transporte", () => {
+    assert.equal(typeof callSoap, "function");
   });
 });
