@@ -14,6 +14,8 @@ src/
     xml-signer.ts        XMLDSig c14n + rsa-sha1 (GissOnline) or rsa-sha256 (national)
     transport-errors.ts  network, TLS and certificate failures → NfseError
     xml.ts               XML builders
+    batch.ts             runPool: concurrency, rate limit and abort for issueMany
+    certificate-pool.ts  CertificatePool: cached certificates per company (TTL, expiry, LRU)
   providers/           one folder per issuing system
     giss/                GissOnline — 32 cities
       soap-client.ts       SOAP 1.1 envelope and mTLS transport
@@ -26,7 +28,8 @@ src/
     nacional/            Sistema Nacional NFS-e (SEFIN + ADN)
       national-client.ts   REST/JSON over mTLS, gzip+base64 documents
       messages.ts          DPS, cancellation event, NFS-e parser
-      national-service.ts  issue, query, cancel, DANFSe, distribution
+      national-service.ts  issue, query, cancel, replace, manifest, received, DANFSe, distribution
+      rejection-codes.ts   SEFIN/ADN error catalog (see national-errors.md)
       danfse/              DANFSe v2.0 (NT 008): XML → fields → PDF, IBGE table, logo
   services/
     lookup-service.ts    postal code and CNPJ lookups (BrasilAPI)
