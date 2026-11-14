@@ -1,3 +1,10 @@
+# [2.5.0-next.8](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.7...v2.5.0-next.8) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** replace pdf-lib with the maintained [@cantoo](https://github.com/cantoo) fork ([#49](https://github.com/[secure]/nfse-br/issues/49)) ([147736f](https://github.com/[secure]/nfse-br/commit/147736f3e8b1fbfd96e1a1e98db4d917b19d1fd5))
+
 # [2.5.0-next.7](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.6...v2.5.0-next.7) (2026-11-14)
 
 # [2.5.0-next.6](https://github.com/[secure]/nfse-br/compare/v2.5.0-next.5...v2.5.0-next.6) (2026-11-14)
