@@ -36,6 +36,8 @@ export * from "./domain/types.ts";
 export * from "./domain/signature-policy.ts";
 
 export { loadCertificate, exportPem } from "./infra/certificate.ts";
+export { CertificatePool } from "./infra/certificate-pool.ts";
+export type { CertificatePoolOptions, CertificatePoolStats, CertificateSource } from "./infra/certificate-pool.ts";
 export type {
   Certificate,
   CertificateInput,
